@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,7 +20,14 @@ from app.models import (  # noqa: E402, F401
     User,
 )
 
-app = FastAPI(title=settings.app_name, version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,11 +40,6 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(subjects.router, prefix="/api")
 app.include_router(lectures.router, prefix="/api")
-
-
-@app.on_event("startup")
-def on_startup() -> None:
-    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/api/health")
