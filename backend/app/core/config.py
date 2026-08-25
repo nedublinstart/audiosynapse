@@ -28,8 +28,11 @@ class Settings(BaseSettings):
     ai_cache_seconds: float = 600.0
     transcribe_timeout_seconds: float = 600.0
 
-    # Optional local speech-to-text (pip install faster-whisper)
-    whisper_model: str = "base"
+    # Local speech-to-text (faster-whisper). "small" is the best quality/speed
+    # trade-off for Russian lectures; "base" is ~2x faster but less accurate.
+    whisper_model: str = "small"
+    # Empty = autodetect. Set e.g. "ru" or "en" when detection picks the wrong one.
+    whisper_language: str = ""
 
     # Set to true to use only your own AI_BASE_URL endpoint.
     ai_disable_g4f: bool = False

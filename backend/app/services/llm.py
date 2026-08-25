@@ -365,23 +365,50 @@ def _load_whisper():
     return _whisper_model
 
 
-def _transcribe_local(audio_path: Path) -> tuple[str, int | None]:
-    model = _load_whisper()
-    try:
-        segments, info = model.transcribe(str(audio_path), vad_filter=True)
-        collected = list(segments)
-    except Exception as exc:  # noqa: BLE001
-        # VAD needs onnxruntime; fall back to plain decoding.
-        logger.info("whisper VAD failed (%s); retrying without VAD", exc)
-        segments, info = model.transcribe(str(audio_path), vad_filter=False)
-        collected = list(segments)
+def _decode(model, audio_path: Path, *, use_vad: bool) -> tuple[str, int | None]:
+    # condition_on_previous_text=False stops the repetition loops Whisper falls
+    # into on lecture audio; extra detection segments avoid picking a wrong
+    # language from a two-word greeting at the start.
+    options = {
+        "beam_size": 5,
+        "condition_on_previous_text": False,
+        "language": settings.whisper_language or None,
+        "language_detection_segments": 3,
+    }
+    if use_vad:
+        options["vad_filter"] = True
+        # Defaults clip real speech in lecture recordings.
+        options["vad_parameters"] = {"min_silence_duration_ms": 1000, "speech_pad_ms": 400}
+    else:
+        options["vad_filter"] = False
 
+    segments, info = model.transcribe(str(audio_path), **options)
     parts = []
-    for seg in collected:
+    for seg in segments:
         stamp = time.strftime("%M:%S", time.gmtime(max(0, seg.start)))
         parts.append(f"[{stamp}] {seg.text.strip()}")
     duration = int(getattr(info, "duration", 0) or 0) or None
     return "\n".join(parts).strip(), duration
+
+
+def _transcribe_local(audio_path: Path) -> tuple[str, int | None]:
+    model = _load_whisper()
+    try:
+        text, duration = _decode(model, audio_path, use_vad=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("whisper with VAD failed (%s); retrying without VAD", exc)
+        return _decode(model, audio_path, use_vad=False)
+
+    # A far too short result means VAD or language detection swallowed speech.
+    if duration and len(text) < duration * 0.8:
+        logger.info("transcript suspiciously short (%s chars / %ss); retrying without VAD", len(text), duration)
+        try:
+            alt_text, alt_duration = _decode(model, audio_path, use_vad=False)
+            if len(alt_text) > len(text):
+                return alt_text, alt_duration or duration
+        except Exception as exc:  # noqa: BLE001
+            logger.info("retry without VAD failed: %s", exc)
+    return text, duration
 
 
 def transcribe(audio_path: Path, filename: str) -> Transcript:

@@ -304,13 +304,13 @@ function LectureInner() {
                   className="processing-dot h-2 w-2 rounded-full"
                   style={{ background: "var(--processing)" }}
                 />
-                Обрабатываем лекцию…
+                Расшифровываем аудио и собираем конспект…
               </div>
             ) : lecture.notes_markdown ? (
               <MarkdownNotes content={lecture.notes_markdown} />
             ) : (
               <div className="py-16 text-center text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-                Загрузите аудио (.mp3, .wav, .m4a, .ogg),
+                Загрузите аудио (mp3, wav, m4a, ogg, opus, aac, flac и др.),
                 <br className="sm:hidden" /> чтобы собрать конспект.
               </div>
             )}
