@@ -52,7 +52,8 @@ API_PROXY_TARGET=http://127.0.0.1:8787 npm run dev
 
 ## AI (G4F)
 
-По умолчанию: модель `gemini-3.6-flash`, провайдеры `Gemini → DeepSeek → Cerebras → Pollinations → OpenaiChat`.
+По умолчанию: модель `gemini-3.6-flash`, провайдеры `Gemini → AnyProvider → …`.
+Текстовый чат **не требует ffmpeg** (предупреждение pydub можно игнорировать).
 Сильнее модели — через `G4F_API_KEY` / cookies в `~/.g4f/cookies`.
 
 ## Переменные окружения

@@ -18,9 +18,11 @@ class Settings(BaseSettings):
     # GPT4Free (https://github.com/xtekky/gpt4free) — primary AI engine
     # gemini-3.6-flash works unauthenticated via g4f Provider.Gemini;
     # stronger models (3.1-pro / gpt-4o) need cookies or G4F_API_KEY.
+    # Free Gemini models work without auth via g4f Provider.Gemini.
+    # Avoid OpenAI model ids here — they break Gemini and waste time on RetryProvider.
     g4f_model: str = "gemini-3.6-flash"
-    g4f_fallback_models: str = "gemini-3.1-pro,gpt-4o-mini,gpt-4o"
-    g4f_providers: str = "Gemini,DeepSeek,Cerebras,Pollinations,OpenaiChat"
+    g4f_fallback_models: str = "gemini-3.5-flash-lite,gemini-3.1-pro"
+    g4f_providers: str = "Gemini,AnyProvider,PollinationsAI,DeepSeek,Cerebras,OpenaiChat"
     g4f_api_key: str = ""
     g4f_proxy: str = ""
 

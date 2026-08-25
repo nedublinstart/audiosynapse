@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor
+import warnings
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from functools import lru_cache
 from pathlib import Path
 
@@ -16,6 +17,16 @@ from app.prompts.synapse_core import (
 
 logger = logging.getLogger("synapse.ai")
 _executor = ThreadPoolExecutor(max_workers=2)
+
+# pydub (pulled by g4f extras) warns if ffmpeg is missing — irrelevant for text chat.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*Couldn't find ffmpeg or avconv.*",
+    category=RuntimeWarning,
+)
+
+# Per-call timeout so a hung free provider does not freeze the chat UI.
+_PROVIDER_TIMEOUT_SEC = 45
 
 
 def _format_duration(seconds: int | None) -> str:
@@ -107,44 +118,90 @@ def build_demo_notes(
 """
 
 
+def _is_greeting(message: str) -> bool:
+    text = re.sub(r"[^\w\sа-яА-ЯёЁ]", "", message.lower()).strip()
+    greetings = {
+        "привет",
+        "здравствуй",
+        "здравствуйте",
+        "добрый день",
+        "доброе утро",
+        "добрый вечер",
+        "хай",
+        "hello",
+        "hi",
+        "hey",
+        "ку",
+        "йо",
+    }
+    if text in greetings:
+        return True
+    return any(text.startswith(g + " ") for g in greetings)
+
+
+def _offline_chat_reply(message: str, *, exam_mode: bool, notes: str, transcript: str | None, materials_text: str) -> str:
+    if _is_greeting(message):
+        return (
+            "Привет! Я Synapse Tutor — помогу разобрать конспект и материалы этой лекции.\n\n"
+            "Спроси, например: «объясни главный термин», «сделай вопросы к экзамену» "
+            "или «что было в начале лекции?»."
+        )
+
+    haystack = "\n".join(filter(None, [notes or "", transcript or "", materials_text]))
+    lowered = message.lower()
+
+    if exam_mode or "вопрос" in lowered or "экзамен" in lowered:
+        return (
+            "Режим «Экзамен» (локальный fallback — онлайн-ИИ временно недоступен).\n\n"
+            "1. Назовите 3 ключевых термина из конспекта. (Запоминание)\n"
+            "2. Объясните один термин техникой Фейнмана. (Понимание)\n"
+            "3. Приведите пример применения идеи из лекции. (Применение)\n"
+            "4. Где в материале есть «слепая зона» и что дочитать? (Анализ)\n"
+            "Ответы не привожу — сверьтесь с блоком Active Recall в конспекте. [Конспект]"
+        )
+
+    excerpt = ""
+    for line in haystack.splitlines():
+        if any(tok in line.lower() for tok in lowered.split() if len(tok) > 3):
+            excerpt = line.strip()
+            break
+    if not excerpt:
+        excerpt = next((ln.strip() for ln in haystack.splitlines() if len(ln.strip()) > 40), "")
+
+    if excerpt:
+        return (
+            "Онлайн-ИИ сейчас недоступен, отвечаю по тексту лекции:\n\n"
+            f"{excerpt}\n\n[Конспект]"
+        )
+
+    return (
+        "Онлайн-ИИ сейчас недоступен, а в материалах этой лекции пока мало текста для ответа. "
+        "Загрузите аудио/PDF или подождите, пока конспект сгенерируется, и спросите ещё раз."
+    )
+
+
+def _resolve_provider_names() -> list[str]:
+    names = [n.strip() for n in settings.g4f_providers.split(",") if n.strip()]
+    # Gemini first: works unauthenticated with gemini-* models on current g4f.
+    defaults = ["Gemini", "AnyProvider", "PollinationsAI", "DeepSeek", "Cerebras", "OpenaiChat"]
+    ordered: list[str] = []
+    for name in [*names, *defaults]:
+        if name and name not in ordered:
+            ordered.append(name)
+    return ordered
+
+
 def _resolve_providers():
     from g4f import Provider
 
-    names = [n.strip() for n in settings.g4f_providers.split(",") if n.strip()]
     providers = []
-    for name in names:
+    for name in _resolve_provider_names():
         prov = getattr(Provider, name, None)
         if prov is None:
             logger.warning("G4F provider not found: %s", name)
             continue
         providers.append(prov)
-    if not providers:
-        # Sensible defaults: free-capable first, then paid/auth providers if configured
-        for name in ("Gemini", "DeepSeek", "Cerebras", "Pollinations", "OpenaiChat"):
-            prov = getattr(Provider, name, None)
-            if prov is not None:
-                providers.append(prov)
     return providers
-
-
-@lru_cache(maxsize=1)
-def _get_client():
-    """Cached G4F client with RetryProvider chain."""
-    from g4f.client import Client
-    from g4f.Provider import RetryProvider
-
-    Path.home().joinpath(".g4f", "cookies").mkdir(parents=True, exist_ok=True)
-
-    providers = _resolve_providers()
-    kwargs: dict = {}
-    if settings.g4f_api_key:
-        kwargs["api_key"] = settings.g4f_api_key
-    if settings.g4f_proxy:
-        kwargs["proxies"] = settings.g4f_proxy
-
-    if len(providers) == 1:
-        return Client(provider=providers[0], **kwargs)
-    return Client(provider=RetryProvider(providers, shuffle=False), **kwargs)
 
 
 def _model_candidates() -> list[str]:
@@ -154,52 +211,108 @@ def _model_candidates() -> list[str]:
     for m in [primary, *fallbacks]:
         if m and m not in ordered:
             ordered.append(m)
+    # Always keep known-good Gemini free models as last resort.
+    for m in ("gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro"):
+        if m not in ordered:
+            ordered.append(m)
     return ordered or ["gemini-3.6-flash"]
 
 
+def _models_for_provider(provider_name: str) -> list[str]:
+    """Avoid sending OpenAI model ids to Gemini (raises ValueError and wastes time)."""
+    all_models = _model_candidates()
+    if provider_name in {"Gemini"}:
+        gemini = [m for m in all_models if m.startswith("gemini")]
+        return gemini or ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
+    if provider_name in {"AnyProvider"}:
+        # Prefer Gemini-compatible ids first for free anonymous use.
+        gemini = [m for m in all_models if m.startswith("gemini")]
+        rest = [m for m in all_models if not m.startswith("gemini")]
+        return [*gemini, *rest] or all_models
+    return all_models
+
+
+@lru_cache(maxsize=1)
+def _provider_map() -> dict:
+    from g4f import Provider
+
+    out = {}
+    for name in _resolve_provider_names():
+        prov = getattr(Provider, name, None)
+        if prov is not None:
+            out[name] = prov
+    return out
+
+
+def _create_completion(provider, model: str, messages: list[dict], temperature: float) -> str:
+    from g4f.client import Client
+
+    kwargs: dict = {"provider": provider}
+    if settings.g4f_api_key:
+        kwargs["api_key"] = settings.g4f_api_key
+    if settings.g4f_proxy:
+        kwargs["proxies"] = settings.g4f_proxy
+
+    client = Client(**kwargs)
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        web_search=False,
+        temperature=temperature,
+    )
+    return (response.choices[0].message.content or "").strip()
+
+
+def _try_one(provider_name: str, model: str, messages: list[dict], temperature: float) -> str:
+    providers = _provider_map()
+    provider = providers.get(provider_name)
+    if provider is None:
+        raise RuntimeError(f"provider missing: {provider_name}")
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(_create_completion, provider, model, messages, temperature)
+        try:
+            content = fut.result(timeout=_PROVIDER_TIMEOUT_SEC)
+        except FuturesTimeout as exc:
+            raise TimeoutError(f"{provider_name}/{model} timed out after {_PROVIDER_TIMEOUT_SEC}s") from exc
+
+    if not content:
+        raise RuntimeError("empty response")
+    return content
+
+
 def _chat_sync(system: str, user: str, *, temperature: float = 0.35) -> str:
-    """Blocking G4F chat completion; tries model candidates sequentially."""
-    client = _get_client()
+    """Blocking G4F chat: try providers×models with timeouts (no hung RetryProvider)."""
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
     errors: list[str] = []
-    for model in _model_candidates():
-        try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                web_search=False,
-                temperature=temperature,
-            )
-            content = (response.choices[0].message.content or "").strip()
-            if content:
-                logger.info("G4F success model=%s chars=%s", model, len(content))
+
+    # Explicit order beats RetryProvider for reliability on Windows free setups.
+    for provider_name in _resolve_provider_names():
+        if provider_name not in _provider_map():
+            continue
+        for model in _models_for_provider(provider_name):
+            try:
+                content = _try_one(provider_name, model, messages, temperature)
+                logger.info("G4F success provider=%s model=%s chars=%s", provider_name, model, len(content))
                 return content
-            errors.append(f"{model}: empty response")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("G4F model=%s failed: %s", model, exc)
-            errors.append(f"{model}: {exc}")
+            except Exception as exc:  # noqa: BLE001
+                msg = f"{provider_name}/{model}: {exc}"
+                logger.warning("G4F failed: %s", msg)
+                errors.append(msg)
+                # Auth/payment issues: skip remaining models for this provider.
+                name = type(exc).__name__
+                if name in {
+                    "MissingAuthError",
+                    "PaymentRequiredError",
+                    "NoValidHarFileError",
+                    "MissingRequirementsError",
+                }:
+                    break
 
-    # Last resort: bare Client without pinned provider
-    try:
-        from g4f.client import Client
-        from g4f.Provider import Gemini
-
-        bare = Client(provider=Gemini, api_key=settings.g4f_api_key or None)
-        response = bare.chat.completions.create(
-            model="gemini-3.6-flash",
-            messages=messages,
-            web_search=False,
-        )
-        content = (response.choices[0].message.content or "").strip()
-        if content:
-            return content
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"bare-Gemini: {exc}")
-
-    raise RuntimeError("G4F failed for all models: " + " | ".join(errors[:4]))
+    raise RuntimeError("G4F failed for all providers: " + " | ".join(errors[:6]))
 
 
 async def _chat(system: str, user: str, *, temperature: float = 0.35) -> str:
@@ -211,7 +324,7 @@ async def _chat(system: str, user: str, *, temperature: float = 0.35) -> str:
 
 def g4f_status() -> dict:
     try:
-        providers = [p.__name__ for p in _resolve_providers()]
+        providers = list(_provider_map().keys())
     except Exception:  # noqa: BLE001
         providers = []
     return {
@@ -220,6 +333,7 @@ def g4f_status() -> dict:
         "fallback_models": _model_candidates()[1:],
         "providers": providers,
         "api_key_configured": bool(settings.g4f_api_key),
+        "ffmpeg_required_for_chat": False,
     }
 
 
@@ -234,7 +348,6 @@ async def transcribe_audio(audio_path: Path, filename: str) -> tuple[str, int | 
     stem = Path(filename).stem.replace("_", " ")
     size_kb = max(1, audio_path.stat().st_size // 1024)
 
-    # Try multimodal transcription through G4F (Gemini provider accepts media on some builds)
     try:
         from g4f.client import Client
         from g4f.Provider import Gemini
@@ -389,27 +502,10 @@ async def chat_about_lecture(
         return await _chat(system, user_prompt, temperature=0.4)
     except Exception as exc:  # noqa: BLE001
         logger.error("chat G4F failed: %s", exc)
-        haystack = "\n".join(filter(None, [notes or "", transcript or "", materials_text]))
-        lowered = message.lower()
-        if exam_mode or "вопрос" in lowered or "экзамен" in lowered:
-            return (
-                "Режим «Экзамен» (локальный fallback — G4F временно недоступен).\n\n"
-                "1. Назовите 3 ключевых термина из конспекта. (Запоминание)\n"
-                "2. Объясните один термин техникой Фейнмана. (Понимание)\n"
-                "3. Приведите пример применения идеи из лекции. (Применение)\n"
-                "4. Где в материале есть «слепая зона» и что дочитать? (Анализ)\n"
-                "Ответы не привожу — сверьтесь с блоком Active Recall в конспекте. [Конспект]"
-            )
-        excerpt = ""
-        for line in haystack.splitlines():
-            if any(tok in line.lower() for tok in lowered.split() if len(tok) > 3):
-                excerpt = line.strip()
-                break
-        if not excerpt:
-            excerpt = next((ln.strip() for ln in haystack.splitlines() if len(ln.strip()) > 40), "")
-        if not excerpt:
-            return (
-                "В загруженных материалах этой лекции недостаточно данных для ответа. "
-                "Загрузите аудио/PDF или уточните вопрос по конспекту."
-            )
-        return f"По материалам этой лекции:\n\n{excerpt}\n\n[Конспект]"
+        return _offline_chat_reply(
+            message,
+            exam_mode=exam_mode,
+            notes=notes,
+            transcript=transcript,
+            materials_text=materials_text,
+        )
