@@ -20,7 +20,7 @@ npm run dev
 - API — `8787` (**не** 8000: на Windows 11 он часто заблокирован, WinError 10013)
 
 Стоп: `Ctrl+C` или `npm run stop`  
-Диагностика: `npm run doctor` — покажет, что именно сломано
+Диагностика: `npm run doctor` (окружение) и `npm run ai-check` (доступные ИИ)
 
 Или кнопки: `SETUP.bat` → `START.bat` → `DOCTOR.bat` → `STOP.bat` (см. `START_HERE.txt`).  
 Разбор конкретных ошибок — `FIX_WINDOWS.txt`.
@@ -53,22 +53,40 @@ API_PROXY_TARGET=http://127.0.0.1:8787 npm run dev
 
 Откройте http://localhost:3000
 
-## AI (G4F)
+## AI
 
-По умолчанию: модель `gemini-3.6-flash`, провайдеры `Gemini → AnyProvider → PollinationsAI → …`.
+Движок ИИ выбирается автоматически, в таком порядке:
 
-- Каждая попытка ограничена таймаутом 45 с, поэтому чат не «висит».
-- Текстовый чат **не требует ffmpeg**.
-- Если все провайдеры недоступны, чат отвечает локально по тексту конспекта.
-- Сильнее модели — через `G4F_API_KEY` / cookies в `~/.g4f/cookies`.
+1. **Свой OpenAI-совместимый endpoint** — если заданы `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL`.
+   Подходит OpenRouter, Groq, DeepSeek, Together, локальная Ollama/LM Studio.
+2. **Бесплатные провайдеры GPT4Free** — Synapse перебирает ~14 провайдеров, каждого
+   с его собственной моделью, и запоминает первый рабочий на 10 минут.
+3. **Локальный режим** — если недоступно всё, конспект и ответы собираются из текста
+   материалов, интерфейс не ломается.
+
+Проверить, что работает из твоей сети: `npm run ai-check`
+
+### Распознавание речи
+
+Локально через [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — интернет не нужен,
+таймкоды `[MM:SS]` расставляются автоматически. Модель (`WHISPER_MODEL`, по умолчанию `base`)
+скачивается при первой расшифровке. Альтернатива — `AI_TRANSCRIBE_MODEL` через свой endpoint
+(например `whisper-large-v3` на Groq).
 
 ## Переменные окружения
 
 | Переменная | Описание |
 |---|---|
-| `G4F_MODEL` | Основная модель (`gemini-3.6-flash`) |
-| `G4F_FALLBACK_MODELS` | Fallback-модели |
-| `G4F_PROVIDERS` | Цепочка провайдеров |
-| `G4F_API_KEY` | Ключ auth-провайдеров (опционально) |
+| `AI_BASE_URL` | OpenAI-совместимый endpoint (напр. `https://openrouter.ai/api/v1`) |
+| `AI_API_KEY` | Ключ этого endpoint |
+| `AI_MODEL` | Модель для чата и конспектов |
+| `AI_TRANSCRIBE_MODEL` | Модель распознавания речи через API (напр. `whisper-large-v3`) |
+| `AI_TIMEOUT_SECONDS` | Таймаут одной попытки, по умолчанию 45 |
+| `AI_MAX_ATTEMPTS` | Сколько бесплатных провайдеров пробовать, по умолчанию 8 |
+| `AI_DISABLE_G4F` | `true` — использовать только свой endpoint |
+| `WHISPER_MODEL` | Локальная модель STT: `tiny`/`base`/`small`/`medium` |
+| `G4F_PROVIDERS` | Закрепить конкретных провайдеров (по умолчанию пусто = авто) |
 | `SECRET_KEY` | JWT secret |
 | `NEXT_PUBLIC_API_URL` | Пусто = same-origin `/api` proxy |
+
+Диагностика: `npm run doctor`, `npm run ai-check`, эндпоинт `GET /api/ai/diagnose`.
