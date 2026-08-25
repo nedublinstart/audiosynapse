@@ -119,10 +119,19 @@ function main() {
 
   if (!fs.existsSync(venvPython)) {
     console.log("\nCreating backend/.venv ...");
-    run(py.exe, [...py.baseArgs, "-m", "venv", venvDir], { shell: isWin });
+    const created = tryRun(py.exe, [...py.baseArgs, "-m", "venv", venvDir], { shell: isWin });
+    if (!created || !fs.existsSync(venvPython)) {
+      // Some Python installs ship without ensurepip; build the venv and add pip after.
+      console.log("Повторная попытка без pip (pip поставим отдельно)...");
+      fs.rmSync(venvDir, { recursive: true, force: true });
+      run(py.exe, [...py.baseArgs, "-m", "venv", "--without-pip", venvDir], { shell: isWin });
+    }
   }
   if (!fs.existsSync(venvPython)) {
-    throw new Error(`venv создан некорректно: нет ${venvPython}`);
+    throw new Error(
+      `venv создан некорректно: нет ${venvPython}\n` +
+        "Переустанови Python 3 с python.org (галочка «Add python.exe to PATH»)."
+    );
   }
 
   if (!ensurePip(venvPython)) {
