@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-/** Best-effort stop for Synapse ports on Windows/macOS/Linux */
+/** Best-effort stop for all ports Synapse may use */
 const { spawnSync } = require("child_process");
-const isWin = process.platform === "win32";
+const { API_PORTS, WEB_PORTS } = require("./lib/ports");
 
-const PORTS = [3000, 8787, 8765, 8899, 18080, 8000];
+const isWin = process.platform === "win32";
+const PORTS = [...WEB_PORTS, ...API_PORTS];
 
 function killPort(port) {
   if (isWin) {
@@ -14,7 +15,7 @@ function killPort(port) {
       if (line.includes(`:${port}`) && line.includes("LISTENING")) {
         const parts = line.trim().split(/\s+/);
         const pid = parts[parts.length - 1];
-        if (/^\d+$/.test(pid)) pids.add(pid);
+        if (/^\d+$/.test(pid) && pid !== "0") pids.add(pid);
       }
     }
     for (const pid of pids) {
