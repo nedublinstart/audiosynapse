@@ -1,0 +1,182 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f4f6f4;
+  --bg-elevated: #ffffff;
+  --bg-soft: #e8eee9;
+  --fg: #1a2420;
+  --fg-muted: #5c6b64;
+  --border: #d5ddd7;
+  --accent: #2f6b55;
+  --accent-soft: #dceae3;
+  --danger: #9b3d3d;
+  --warn: #8a6a2f;
+  --ready: #2f6b55;
+  --processing: #3d5a80;
+  --awaiting: #6b7280;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(26, 36, 32, 0.04);
+}
+
+html.dark {
+  --bg: #121614;
+  --bg-elevated: #1a1f1c;
+  --bg-soft: #232a26;
+  --fg: #e8eee9;
+  --fg-muted: #9aaba2;
+  --border: #2d3631;
+  --accent: #6fbf9a;
+  --accent-soft: #24352c;
+  --danger: #e07a7a;
+  --warn: #d4b56a;
+  --ready: #6fbf9a;
+  --processing: #7aa2d4;
+  --awaiting: #8b9590;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+html {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  color: var(--fg);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 55%),
+    var(--bg);
+  min-height: 100vh;
+  font-family: var(--font-sans), "Segoe UI", sans-serif;
+}
+
+@layer components {
+  .panel {
+    @apply border;
+    background: var(--bg-elevated);
+    border-color: var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition;
+    border-radius: 8px;
+  }
+
+  .btn-primary {
+    @apply btn text-white;
+    background: var(--accent);
+  }
+
+  .btn-primary:hover {
+    filter: brightness(1.05);
+  }
+
+  .btn-ghost {
+    @apply btn;
+    background: transparent;
+    color: var(--fg-muted);
+  }
+
+  .btn-ghost:hover {
+    background: var(--bg-soft);
+    color: var(--fg);
+  }
+
+  .input {
+    @apply w-full px-3 py-2 text-sm outline-none transition;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--fg);
+  }
+
+  .input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .label {
+    @apply mb-1 block text-xs font-medium uppercase tracking-wide;
+    color: var(--fg-muted);
+  }
+}
+
+/* Markdown note reading surface */
+.note-prose {
+  line-height: 1.7;
+  font-size: 1.02rem;
+}
+
+.note-prose h1 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.85rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+  letter-spacing: -0.02em;
+}
+
+.note-prose h2 {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 2rem 0 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.note-prose h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.note-prose p,
+.note-prose li {
+  color: var(--fg);
+}
+
+.note-prose ul {
+  padding-left: 1.2rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.note-prose strong {
+  color: var(--fg);
+}
+
+.note-prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5rem 0;
+}
+
+.note-prose code {
+  font-size: 0.9em;
+  background: var(--bg-soft);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.note-prose .katex-display {
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+}
