@@ -8,7 +8,8 @@
     "dev": "node scripts/dev.js",
     "start": "node scripts/dev.js",
     "stop": "node scripts/stop.js",
-    "doctor": "node scripts/doctor.js"
+    "doctor": "node scripts/doctor.js",
+    "ai-check": "node scripts/ai-check.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

@@ -64,16 +64,24 @@ async function main() {
       [
         "import importlib, json",
         "mods = ['fastapi','uvicorn','sqlalchemy','pydantic_settings','jose','bcrypt','g4f','pypdf','docx','dotenv']",
+        "optional = ['faster_whisper']",
         "missing = []",
         "for m in mods:",
         "    try:",
         "        importlib.import_module(m)",
         "    except Exception as exc:",
         "        missing.append(m)",
-        "out = {'missing': missing}",
+        "out = {'missing': missing, 'optional_missing': []}",
+        "for m in optional:",
+        "    try:",
+        "        importlib.import_module(m)",
+        "    except Exception:",
+        "        out['optional_missing'].append(m)",
         "try:",
         "    from app.main import app",
         "    out['app'] = app.title",
+        "    from app.services import llm",
+        "    out['ai'] = llm.status()",
         "except Exception as exc:",
         "    out['app_error'] = f'{type(exc).__name__}: {exc}'",
         "print('DOCTOR_JSON=' + json.dumps(out, ensure_ascii=False))",
@@ -101,6 +109,28 @@ async function main() {
       }
       if (data.app) ok("backend импортируется", data.app);
       else bad(`backend не импортируется: ${data.app_error || "unknown"}`, "npm run setup");
+
+      const ai = data.ai || {};
+      if (ai.custom_api_configured) {
+        ok("Свой AI endpoint настроен", ai.custom_api_model || "");
+      } else {
+        ok("ИИ через бесплатные провайдеры", `${(ai.candidate_providers || []).length} кандидатов`);
+      }
+
+      const stt = ai.transcription || {};
+      if (stt.local_whisper) {
+        ok("Распознавание речи (локально)", `faster-whisper: ${stt.local_whisper_model}`);
+      } else if (stt.api) {
+        ok("Распознавание речи (через API)", stt.api_model || "");
+      } else {
+        warn(
+          "Распознавание речи недоступно",
+          "npm run setup переустановит faster-whisper (offline STT)"
+        );
+      }
+      if ((data.optional_missing || []).includes("faster_whisper")) {
+        warn("faster-whisper не установлен", "npm run setup");
+      }
     } else {
       bad("Не удалось запустить проверку Python", raw.trim().split("\n").slice(-3).join(" | "));
     }
