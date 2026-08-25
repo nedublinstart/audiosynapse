@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user
@@ -138,17 +138,22 @@ def update_subject(
     return _subject_out(subject)
 
 
-@router.delete("/subjects/{subject_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/subjects/{subject_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 def delete_subject(
     subject_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> None:
+) -> Response:
     subject = db.query(Subject).filter(Subject.id == subject_id, Subject.owner_id == user.id).first()
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
     db.delete(subject)
     db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/subjects/{subject_id}/schedule", response_model=ScheduleSlotOut)

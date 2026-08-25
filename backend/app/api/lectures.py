@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user
@@ -166,15 +166,20 @@ def update_lecture(
     return _lecture_out(lecture)
 
 
-@router.delete("/lectures/{lecture_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/lectures/{lecture_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
 def delete_lecture(
     lecture_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> None:
+) -> Response:
     lecture = _get_owned_lecture(db, user, lecture_id)
     db.delete(lecture)
     db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/lectures/{lecture_id}/audio", response_model=LectureOut)
