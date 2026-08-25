@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     whisper_model: str = "small"
     # Empty = autodetect. Set e.g. "ru" or "en" when detection picks the wrong one.
     whisper_language: str = ""
+    # VAD is ~2x faster but sometimes silently drops speech, so it is opt-in.
+    whisper_vad: bool = False
+    whisper_device: str = "auto"
+    whisper_compute_type: str = "int8"
 
     # Set to true to use only your own AI_BASE_URL endpoint.
     ai_disable_g4f: bool = False

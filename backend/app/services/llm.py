@@ -361,7 +361,11 @@ def _load_whisper():
         from faster_whisper import WhisperModel
 
         logger.info("loading faster-whisper model %s", settings.whisper_model)
-        _whisper_model = WhisperModel(settings.whisper_model, device="auto", compute_type="int8")
+        _whisper_model = WhisperModel(
+            settings.whisper_model,
+            device=settings.whisper_device,
+            compute_type=settings.whisper_compute_type,
+        )
     return _whisper_model
 
 
@@ -384,27 +388,34 @@ def _decode(model, audio_path: Path, *, use_vad: bool) -> tuple[str, int | None]
 
     segments, info = model.transcribe(str(audio_path), **options)
     parts = []
+    covered = 0.0
     for seg in segments:
         stamp = time.strftime("%M:%S", time.gmtime(max(0, seg.start)))
         parts.append(f"[{stamp}] {seg.text.strip()}")
+        covered += max(0.0, seg.end - seg.start)
     duration = int(getattr(info, "duration", 0) or 0) or None
-    return "\n".join(parts).strip(), duration
+    coverage = covered / duration if duration else 1.0
+    return "\n".join(parts).strip(), duration, coverage
 
 
 def _transcribe_local(audio_path: Path) -> tuple[str, int | None]:
     model = _load_whisper()
+    use_vad = settings.whisper_vad
     try:
-        text, duration = _decode(model, audio_path, use_vad=True)
+        text, duration, coverage = _decode(model, audio_path, use_vad=use_vad)
     except Exception as exc:  # noqa: BLE001
+        if not use_vad:
+            raise
         logger.info("whisper with VAD failed (%s); retrying without VAD", exc)
-        return _decode(model, audio_path, use_vad=False)
+        text, duration, coverage = _decode(model, audio_path, use_vad=False)
+        return text, duration
 
-    # A far too short result means VAD or language detection swallowed speech.
-    if duration and len(text) < duration * 0.8:
-        logger.info("transcript suspiciously short (%s chars / %ss); retrying without VAD", len(text), duration)
+    # Low coverage means whole passages were skipped (VAD or language misdetect).
+    if use_vad and coverage < 0.6:
+        logger.info("transcript covers only %.0f%% of audio; retrying without VAD", coverage * 100)
         try:
-            alt_text, alt_duration = _decode(model, audio_path, use_vad=False)
-            if len(alt_text) > len(text):
+            alt_text, alt_duration, alt_coverage = _decode(model, audio_path, use_vad=False)
+            if alt_coverage > coverage or len(alt_text) > len(text):
                 return alt_text, alt_duration or duration
         except Exception as exc:  # noqa: BLE001
             logger.info("retry without VAD failed: %s", exc)
