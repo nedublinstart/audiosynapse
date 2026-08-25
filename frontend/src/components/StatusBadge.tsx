@@ -5,7 +5,7 @@ const LABELS: Record<LectureStatus, string> = {
   awaiting_audio: "Ожидает аудио",
   processing: "В обработке",
   ready: "Готова",
-  needs_clarification: "Требует уточнения",
+  needs_clarification: "Уточнение",
 };
 
 const COLORS: Record<LectureStatus, string> = {
@@ -19,16 +19,17 @@ export function StatusBadge({ status, className }: { status: LectureStatus; clas
   return (
     <span
       className={clsx(
-        "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-medium tracking-wide",
         className
       )}
       style={{
-        background: `color-mix(in srgb, ${COLORS[status]} 18%, transparent)`,
+        background: `color-mix(in srgb, ${COLORS[status]} 16%, transparent)`,
         color: COLORS[status],
+        border: `1px solid color-mix(in srgb, ${COLORS[status]} 28%, transparent)`,
       }}
     >
       <span
-        className="h-1.5 w-1.5 rounded-full"
+        className={clsx("h-1.5 w-1.5 rounded-full", status === "processing" && "processing-dot")}
         style={{ background: COLORS[status] }}
       />
       {LABELS[status]}

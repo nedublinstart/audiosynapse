@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
+import { FadeIn } from "@/components/FadeIn";
 import { StatusBadge } from "@/components/StatusBadge";
 import { api, type Lecture, type Subject } from "@/lib/api";
 import { format } from "date-fns";
@@ -59,53 +60,55 @@ function SubjectInner() {
 
   return (
     <AppShell title={subject ? subject.name : "Предмет"}>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Link href="/app" className="btn-ghost">
-            <ArrowLeft size={16} /> Назад
-          </Link>
-          <h2
-            className="text-2xl font-semibold"
-            style={{ fontFamily: "var(--font-display), Georgia, serif" }}
-          >
-            {subject?.name || "…"}
-          </h2>
+      <FadeIn>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-2 sm:items-center sm:gap-3">
+            <Link href="/app" className="btn-ghost !min-h-10 shrink-0 !px-2.5" aria-label="Назад">
+              <ArrowLeft size={18} />
+              <span className="hidden sm:inline">Назад</span>
+            </Link>
+            <h2 className="page-title truncate text-2xl sm:text-3xl">
+              {subject?.name || "…"}
+            </h2>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-ghost !min-h-10 !px-3" onClick={() => void onDeleteSubject()} aria-label="Удалить">
+              <Trash2 size={16} />
+            </button>
+            <button className="btn-primary flex-1 sm:!w-auto" onClick={() => setShowForm((v) => !v)}>
+              <Plus size={16} /> Лекция
+            </button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button className="btn-ghost" onClick={() => void onDeleteSubject()}>
-            <Trash2 size={16} />
-          </button>
-          <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
-            <Plus size={16} /> Лекция
-          </button>
-        </div>
-      </div>
+      </FadeIn>
 
       {showForm ? (
-        <form onSubmit={onCreate} className="panel mb-6 grid gap-3 p-4 sm:grid-cols-2">
-          <div>
-            <label className="label">Название карточки</label>
-            <input
-              className="input"
-              required
-              placeholder="Лекция 3"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label">Тема</label>
-            <input
-              className="input"
-              placeholder="Диалектика Гегеля"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-            />
-          </div>
-          <div>
-            <button className="btn-primary">Создать</button>
-          </div>
-        </form>
+        <FadeIn>
+          <form onSubmit={onCreate} className="panel mb-6 grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
+            <div>
+              <label className="label">Название карточки</label>
+              <input
+                className="input"
+                required
+                placeholder="Лекция 3"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label">Тема</label>
+              <input
+                className="input"
+                placeholder="Диалектика Гегеля"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <button className="btn-primary sm:!w-auto">Создать</button>
+            </div>
+          </form>
+        </FadeIn>
       ) : null}
 
       {error ? (
@@ -114,23 +117,23 @@ function SubjectInner() {
         </p>
       ) : null}
 
-      <div className="space-y-2">
+      <div className="stagger space-y-2.5">
         {lectures.map((lecture) => (
           <Link
             key={lecture.id}
             href={`/app/lectures/${lecture.id}`}
-            className="panel flex flex-wrap items-center justify-between gap-3 p-4 transition hover:translate-y-[-1px]"
+            className="panel panel-interactive flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
           >
-            <div>
-              <div className="font-medium">{lecture.title}</div>
-              <div className="text-sm" style={{ color: "var(--fg-muted)" }}>
+            <div className="min-w-0">
+              <div className="font-medium tracking-tight">{lecture.title}</div>
+              <div className="mt-0.5 truncate text-sm" style={{ color: "var(--fg-muted)" }}>
                 {lecture.topic || "Тема не указана"}
                 {lecture.lecture_date
                   ? ` · ${format(new Date(lecture.lecture_date), "d MMMM yyyy", { locale: ru })}`
                   : ""}
               </div>
             </div>
-            <StatusBadge status={lecture.status} />
+            <StatusBadge status={lecture.status} className="self-start sm:self-auto" />
           </Link>
         ))}
         {!lectures.length ? (

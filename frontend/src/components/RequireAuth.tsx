@@ -14,8 +14,11 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-sm" style={{ color: "var(--fg-muted)" }}>
-        Загрузка…
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 safe-px">
+        <div className="skeleton h-10 w-10 rounded-[10px]" />
+        <p className="animate-fade-in text-sm" style={{ color: "var(--fg-muted)" }}>
+          Загрузка…
+        </p>
       </div>
     );
   }
