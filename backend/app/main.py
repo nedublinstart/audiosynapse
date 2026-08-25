@@ -49,5 +49,13 @@ def health() -> dict:
     return {
         "status": "ok",
         "app": settings.app_name,
-        "ai": ai.g4f_status(),
+        "ai": ai.ai_status(),
     }
+
+
+@app.get("/api/ai/diagnose")
+def ai_diagnose() -> dict:
+    """Probe every AI engine and report what actually answers from this network."""
+    from app.services import ai
+
+    return ai.diagnose()

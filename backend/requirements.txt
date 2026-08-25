@@ -11,6 +11,10 @@ httpx>=0.28.0
 g4f>=8.0.0
 curl_cffi>=0.7.0
 browser_cookie3>=0.19.0
+websocket-client>=1.7.0
+# Offline speech-to-text: works without internet, so transcription keeps
+# working when free AI providers are blocked.
+faster-whisper>=1.1.0
 pypdf>=5.0.0
 python-docx>=1.1.0
 python-dotenv>=1.0.0

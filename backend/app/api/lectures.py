@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,9 +23,28 @@ from app.schemas import (
 from app.services import ai
 from app.services.documents import extract_text_from_file
 
+logger = logging.getLogger("synapse.lectures")
+
 router = APIRouter(tags=["lectures"])
 
-ALLOWED_AUDIO = {".mp3", ".wav", ".m4a", ".ogg"}
+ALLOWED_AUDIO = {
+    ".mp3",
+    ".wav",
+    ".m4a",
+    ".m4b",
+    ".ogg",
+    ".oga",
+    ".opus",
+    ".aac",
+    ".flac",
+    ".wma",
+    ".amr",
+    ".mp4",
+    ".webm",
+    ".3gp",
+    ".aiff",
+    ".mkv",
+}
 ALLOWED_MATERIALS = {".pdf", ".pptx", ".docx", ".png", ".jpg", ".jpeg", ".webp", ".txt", ".md"}
 
 
@@ -69,34 +89,58 @@ async def _process_lecture_pipeline(lecture_id: int) -> None:
         lecture.status = LectureStatus.processing
         db.commit()
 
-        transcript, duration = await ai.transcribe_audio(
-            Path(lecture.audio_path), lecture.audio_filename or "audio.mp3"
-        )
-        lecture.transcript = transcript
-        if duration:
-            lecture.duration_seconds = duration
+        materials_text = _materials_text(lecture)
+        notices: list[str] = []
+        transcript = ""
+
+        try:
+            result = await ai.transcribe_audio(
+                Path(lecture.audio_path), lecture.audio_filename or "audio.mp3"
+            )
+            transcript = result.text
+            lecture.transcript = transcript
+            if result.duration_seconds:
+                lecture.duration_seconds = result.duration_seconds
+            notices.append(f"Транскрибация: {result.engine}.")
+        except ai.TranscriptionUnavailable as exc:
+            logger.warning("transcription unavailable for lecture %s: %s", lecture_id, exc)
+            notices.append(
+                "Расшифровать аудио не удалось: доступной модели распознавания речи нет. "
+                "Включи локальное распознавание (см. FIX_WINDOWS.txt, раздел «Транскрибация») "
+                "или загрузи слайды/PDF — конспект соберётся по ним."
+            )
+
+        if not transcript and not materials_text.strip():
+            lecture.status = LectureStatus.needs_clarification
+            lecture.enrichment_notice = " ".join(notices)
+            db.commit()
+            return
 
         date_str = (
             lecture.lecture_date.strftime("%d.%m.%Y")
             if lecture.lecture_date
             else datetime.now(timezone.utc).strftime("%d.%m.%Y")
         )
-        notes = await ai.generate_notes(
+        notes, engine = await ai.generate_notes(
             subject_name=lecture.subject.name,
             title=lecture.topic or lecture.title,
             lecture_date=date_str,
             duration_seconds=lecture.duration_seconds,
             transcript=transcript,
-            materials_text=_materials_text(lecture),
+            materials_text=materials_text,
         )
         lecture.notes_markdown = notes
+        if engine == "local":
+            notices.append("Конспект собран локально: ИИ-провайдеры недоступны.")
+        lecture.enrichment_notice = " ".join(notices) or None
         lecture.status = LectureStatus.ready
         db.commit()
     except Exception as exc:  # noqa: BLE001
+        logger.exception("lecture pipeline failed for %s", lecture_id)
         lecture = db.get(Lecture, lecture_id)
         if lecture:
             lecture.status = LectureStatus.needs_clarification
-            lecture.enrichment_notice = f"Ошибка обработки: {exc}"
+            lecture.enrichment_notice = f"Ошибка обработки: {type(exc).__name__}: {exc}"
             db.commit()
     finally:
         db.close()
@@ -198,8 +242,10 @@ async def upload_audio(
     dest_dir = settings.upload_dir / f"lecture_{lecture.id}"
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / f"audio_{uuid.uuid4().hex}{suffix}"
-    content = await file.read()
-    dest.write_bytes(content)
+    # Stream in chunks: lecture recordings can be hundreds of megabytes.
+    with dest.open("wb") as out:
+        while chunk := await file.read(1024 * 1024):
+            out.write(chunk)
 
     lecture.audio_path = str(dest)
     lecture.audio_filename = file.filename

@@ -2,31 +2,36 @@ from __future__ import annotations
 
 import logging
 import re
-import warnings
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-from functools import lru_cache
+from dataclasses import dataclass
 from pathlib import Path
 
-from app.core.config import settings
 from app.prompts.synapse_core import (
     CHAT_SYSTEM_PROMPT,
     ENRICHMENT_SYSTEM_PROMPT,
     EXAM_SYSTEM_PROMPT,
     SYNAPSE_CORE_SYSTEM_PROMPT,
 )
+from app.services import llm
+from app.services.llm import LLMUnavailable
 
 logger = logging.getLogger("synapse.ai")
-_executor = ThreadPoolExecutor(max_workers=2)
 
-# pydub (pulled by g4f extras) warns if ffmpeg is missing — irrelevant for text chat.
-warnings.filterwarnings(
-    "ignore",
-    message=r".*Couldn't find ffmpeg or avconv.*",
-    category=RuntimeWarning,
+AI_SETUP_HINT = (
+    "Похоже, бесплатные ИИ-провайдеры недоступны из твоей сети. "
+    "Проверь командой `npm run ai-check` и при необходимости добавь свой ключ "
+    "(AI_BASE_URL / AI_API_KEY / AI_MODEL в backend/.env) — см. FIX_WINDOWS.txt."
 )
 
-# Per-call timeout so a hung free provider does not freeze the chat UI.
-_PROVIDER_TIMEOUT_SEC = 45
+
+class TranscriptionUnavailable(RuntimeError):
+    """Audio could not be transcribed by any engine."""
+
+
+@dataclass
+class TranscriptResult:
+    text: str
+    duration_seconds: int | None
+    engine: str
 
 
 def _format_duration(seconds: int | None) -> str:
@@ -39,6 +44,37 @@ def _format_duration(seconds: int | None) -> str:
     return f"{m} мин"
 
 
+async def _chat(system: str, user: str, *, temperature: float = 0.35) -> str:
+    import asyncio
+
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+    loop = asyncio.get_running_loop()
+    answer = await loop.run_in_executor(None, lambda: llm.chat(messages, temperature=temperature))
+    logger.info("AI answer via %s (%s chars)", answer.engine, len(answer.content))
+    return answer.content
+
+
+def ai_status() -> dict:
+    return {"engine": "synapse-ai", **llm.status()}
+
+
+# Kept for backwards compatibility with earlier /api/health consumers.
+def g4f_status() -> dict:
+    return ai_status()
+
+
+def diagnose() -> dict:
+    return llm.diagnose()
+
+
+# --------------------------------------------------------------------------- #
+# Offline fallbacks
+# --------------------------------------------------------------------------- #
+
+
 def build_demo_notes(
     *,
     subject_name: str,
@@ -48,8 +84,9 @@ def build_demo_notes(
     transcript: str,
     materials_text: str = "",
 ) -> str:
-    """Offline Cornell-style notes when all G4F providers fail."""
-    cleaned = re.sub(r"\s+", " ", transcript).strip()
+    """Cornell-style notes assembled locally when every AI engine fails."""
+    source = f"{transcript}\n{materials_text}".strip()
+    cleaned = re.sub(r"\s+", " ", source).strip()
     sentences = [s.strip() for s in re.split(r"[.!?]+", cleaned) if len(s.strip()) > 20]
     cues = sentences[:4] or [
         "Основная идея лекции",
@@ -81,6 +118,8 @@ def build_demo_notes(
 
     return f"""# ЛЕКЦИЯ: {title}
 **Предмет:** {subject_name} | **Дата:** {lecture_date} | **Общее время:** {_format_duration(duration_seconds)}
+
+> Конспект собран локально: ИИ-провайдеры были недоступны. {AI_SETUP_HINT}
 
 ## Краткое резюме (Executive Summary)
 *   Лекция структурирована вокруг центральной темы «{title}».
@@ -122,6 +161,7 @@ def _is_greeting(message: str) -> bool:
     text = re.sub(r"[^\w\sа-яА-ЯёЁ]", "", message.lower()).strip()
     greetings = {
         "привет",
+        "приветик",
         "здравствуй",
         "здравствуйте",
         "добрый день",
@@ -139,12 +179,21 @@ def _is_greeting(message: str) -> bool:
     return any(text.startswith(g + " ") for g in greetings)
 
 
-def _offline_chat_reply(message: str, *, exam_mode: bool, notes: str, transcript: str | None, materials_text: str) -> str:
+def _offline_chat_reply(
+    message: str,
+    *,
+    exam_mode: bool,
+    notes: str,
+    transcript: str | None,
+    materials_text: str,
+) -> str:
     if _is_greeting(message):
         return (
-            "Привет! Я Synapse Tutor — помогу разобрать конспект и материалы этой лекции.\n\n"
-            "Спроси, например: «объясни главный термин», «сделай вопросы к экзамену» "
-            "или «что было в начале лекции?»."
+            "Привет! Я Synapse Tutor. Отвечаю пока в локальном режиме — "
+            "онлайн-модели недоступны.\n\n"
+            f"{AI_SETUP_HINT}\n\n"
+            "Спросить по материалам лекции всё равно можно: например «главные термины» "
+            "или «что было в начале лекции»."
         )
 
     haystack = "\n".join(filter(None, [notes or "", transcript or "", materials_text]))
@@ -152,240 +201,60 @@ def _offline_chat_reply(message: str, *, exam_mode: bool, notes: str, transcript
 
     if exam_mode or "вопрос" in lowered or "экзамен" in lowered:
         return (
-            "Режим «Экзамен» (локальный fallback — онлайн-ИИ временно недоступен).\n\n"
+            "Режим «Экзамен», локальный вариант (онлайн-модели недоступны).\n\n"
             "1. Назовите 3 ключевых термина из конспекта. (Запоминание)\n"
             "2. Объясните один термин техникой Фейнмана. (Понимание)\n"
             "3. Приведите пример применения идеи из лекции. (Применение)\n"
-            "4. Где в материале есть «слепая зона» и что дочитать? (Анализ)\n"
-            "Ответы не привожу — сверьтесь с блоком Active Recall в конспекте. [Конспект]"
+            "4. Где в материале «слепая зона» и что дочитать? (Анализ)\n\n"
+            f"{AI_SETUP_HINT}"
         )
 
-    excerpt = ""
+    keywords = [tok for tok in re.split(r"\W+", lowered) if len(tok) > 3]
+    matches: list[str] = []
     for line in haystack.splitlines():
-        if any(tok in line.lower() for tok in lowered.split() if len(tok) > 3):
-            excerpt = line.strip()
+        low = line.lower()
+        if any(tok in low for tok in keywords):
+            stripped = line.strip()
+            if len(stripped) > 15:
+                matches.append(stripped)
+        if len(matches) >= 3:
             break
-    if not excerpt:
-        excerpt = next((ln.strip() for ln in haystack.splitlines() if len(ln.strip()) > 40), "")
+    if not matches:
+        matches = [ln.strip() for ln in haystack.splitlines() if len(ln.strip()) > 40][:2]
 
-    if excerpt:
-        return (
-            "Онлайн-ИИ сейчас недоступен, отвечаю по тексту лекции:\n\n"
-            f"{excerpt}\n\n[Конспект]"
-        )
+    if matches:
+        body = "\n\n".join(matches)
+        return f"Локальный режим (онлайн-модели недоступны). Нашёл в материалах лекции:\n\n{body}\n\n[Конспект]\n\n{AI_SETUP_HINT}"
 
     return (
-        "Онлайн-ИИ сейчас недоступен, а в материалах этой лекции пока мало текста для ответа. "
-        "Загрузите аудио/PDF или подождите, пока конспект сгенерируется, и спросите ещё раз."
+        "Онлайн-модели сейчас недоступны, а в материалах этой лекции пока нет текста, "
+        "по которому можно ответить.\n\n"
+        "Что поможет: загрузи аудио или PDF/DOCX со слайдами, дождись готового конспекта — "
+        "и спроси снова.\n\n"
+        f"{AI_SETUP_HINT}"
     )
 
 
-def _resolve_provider_names() -> list[str]:
-    names = [n.strip() for n in settings.g4f_providers.split(",") if n.strip()]
-    # Gemini first: works unauthenticated with gemini-* models on current g4f.
-    defaults = ["Gemini", "AnyProvider", "PollinationsAI", "DeepSeek", "Cerebras", "OpenaiChat"]
-    ordered: list[str] = []
-    for name in [*names, *defaults]:
-        if name and name not in ordered:
-            ordered.append(name)
-    return ordered
+# --------------------------------------------------------------------------- #
+# Public pipeline
+# --------------------------------------------------------------------------- #
 
 
-def _resolve_providers():
-    from g4f import Provider
-
-    providers = []
-    for name in _resolve_provider_names():
-        prov = getattr(Provider, name, None)
-        if prov is None:
-            logger.warning("G4F provider not found: %s", name)
-            continue
-        providers.append(prov)
-    return providers
-
-
-def _model_candidates() -> list[str]:
-    primary = settings.g4f_model.strip()
-    fallbacks = [m.strip() for m in settings.g4f_fallback_models.split(",") if m.strip()]
-    ordered: list[str] = []
-    for m in [primary, *fallbacks]:
-        if m and m not in ordered:
-            ordered.append(m)
-    # Always keep known-good Gemini free models as last resort.
-    for m in ("gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro"):
-        if m not in ordered:
-            ordered.append(m)
-    return ordered or ["gemini-3.6-flash"]
-
-
-def _models_for_provider(provider_name: str) -> list[str]:
-    """Avoid sending OpenAI model ids to Gemini (raises ValueError and wastes time)."""
-    all_models = _model_candidates()
-    if provider_name in {"Gemini"}:
-        gemini = [m for m in all_models if m.startswith("gemini")]
-        return gemini or ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
-    if provider_name in {"AnyProvider"}:
-        # Prefer Gemini-compatible ids first for free anonymous use.
-        gemini = [m for m in all_models if m.startswith("gemini")]
-        rest = [m for m in all_models if not m.startswith("gemini")]
-        return [*gemini, *rest] or all_models
-    return all_models
-
-
-@lru_cache(maxsize=1)
-def _provider_map() -> dict:
-    from g4f import Provider
-
-    out = {}
-    for name in _resolve_provider_names():
-        prov = getattr(Provider, name, None)
-        if prov is not None:
-            out[name] = prov
-    return out
-
-
-def _create_completion(provider, model: str, messages: list[dict], temperature: float) -> str:
-    from g4f.client import Client
-
-    kwargs: dict = {"provider": provider}
-    if settings.g4f_api_key:
-        kwargs["api_key"] = settings.g4f_api_key
-    if settings.g4f_proxy:
-        kwargs["proxies"] = settings.g4f_proxy
-
-    client = Client(**kwargs)
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        web_search=False,
-        temperature=temperature,
-    )
-    return (response.choices[0].message.content or "").strip()
-
-
-def _try_one(provider_name: str, model: str, messages: list[dict], temperature: float) -> str:
-    providers = _provider_map()
-    provider = providers.get(provider_name)
-    if provider is None:
-        raise RuntimeError(f"provider missing: {provider_name}")
-
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        fut = pool.submit(_create_completion, provider, model, messages, temperature)
-        try:
-            content = fut.result(timeout=_PROVIDER_TIMEOUT_SEC)
-        except FuturesTimeout as exc:
-            raise TimeoutError(f"{provider_name}/{model} timed out after {_PROVIDER_TIMEOUT_SEC}s") from exc
-
-    if not content:
-        raise RuntimeError("empty response")
-    return content
-
-
-def _chat_sync(system: str, user: str, *, temperature: float = 0.35) -> str:
-    """Blocking G4F chat: try providers×models with timeouts (no hung RetryProvider)."""
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
-    errors: list[str] = []
-
-    # Explicit order beats RetryProvider for reliability on Windows free setups.
-    for provider_name in _resolve_provider_names():
-        if provider_name not in _provider_map():
-            continue
-        for model in _models_for_provider(provider_name):
-            try:
-                content = _try_one(provider_name, model, messages, temperature)
-                logger.info("G4F success provider=%s model=%s chars=%s", provider_name, model, len(content))
-                return content
-            except Exception as exc:  # noqa: BLE001
-                msg = f"{provider_name}/{model}: {exc}"
-                logger.warning("G4F failed: %s", msg)
-                errors.append(msg)
-                # Auth/payment issues: skip remaining models for this provider.
-                name = type(exc).__name__
-                if name in {
-                    "MissingAuthError",
-                    "PaymentRequiredError",
-                    "NoValidHarFileError",
-                    "MissingRequirementsError",
-                }:
-                    break
-
-    raise RuntimeError("G4F failed for all providers: " + " | ".join(errors[:6]))
-
-
-async def _chat(system: str, user: str, *, temperature: float = 0.35) -> str:
+async def transcribe_audio(audio_path: Path, filename: str) -> TranscriptResult:
+    """Transcribe lecture audio; raises TranscriptionUnavailable if no engine works."""
     import asyncio
 
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_executor, lambda: _chat_sync(system, user, temperature=temperature))
-
-
-def g4f_status() -> dict:
     try:
-        providers = list(_provider_map().keys())
-    except Exception:  # noqa: BLE001
-        providers = []
-    return {
-        "engine": "g4f",
-        "model": settings.g4f_model,
-        "fallback_models": _model_candidates()[1:],
-        "providers": providers,
-        "api_key_configured": bool(settings.g4f_api_key),
-        "ffmpeg_required_for_chat": False,
-    }
+        result = await loop.run_in_executor(None, lambda: llm.transcribe(audio_path, filename))
+    except LLMUnavailable as exc:
+        raise TranscriptionUnavailable(str(exc)) from exc
 
-
-async def transcribe_audio(audio_path: Path, filename: str) -> tuple[str, int | None]:
-    """
-    Transcribe lecture audio.
-
-    G4F text providers don't natively STT binary audio; we ask a multimodal-capable
-    provider when possible, otherwise build a structured placeholder that still
-    allows Synapse Core to synthesize a full Cornell note via G4F.
-    """
-    stem = Path(filename).stem.replace("_", " ")
-    size_kb = max(1, audio_path.stat().st_size // 1024)
-
-    try:
-        from g4f.client import Client
-        from g4f.Provider import Gemini
-
-        client = Client(provider=Gemini)
-        with audio_path.open("rb") as audio_file:
-            response = client.chat.completions.create(
-                model="gemini-3.6-flash",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": (
-                            "Сделай полную транскрибацию академической лекции на языке оригинала. "
-                            "Сохрани термины точно. Добавляй таймкоды [MM:SS] каждые 30–60 секунд. "
-                            "Не сокращай содержательные фрагменты. Верни только транскрипт."
-                        ),
-                    }
-                ],
-                media=[audio_file],
-                web_search=False,
-            )
-        text = (response.choices[0].message.content or "").strip()
-        if text and len(text) > 80 and "не могу" not in text.lower():
-            return text, None
-    except Exception as exc:  # noqa: BLE001
-        logger.info("G4F audio transcription unavailable (%s); using enriched stub", exc)
-
-    stub = (
-        f"[00:00] Добрый день. Сегодняшняя лекция посвящена теме «{stem}». "
-        f"[00:45] Мы разберём ключевые определения, логику рассуждения и примеры применения. "
-        f"[03:20] Первый блок — базовые понятия и почему они важны в курсе. "
-        f"[07:10] Второй блок — связи между понятиями и типичные ошибки понимания. "
-        f"[12:40] Третий блок — практические следствия и подготовка к семинару. "
-        f"[18:00] В заключение повторим главные тезисы и вопросы для самопроверки. "
-        f"(Аудиофайл {filename}, ~{size_kb} КБ. Транскрибация через G4F multimodal "
-        f"недоступна для этого провайдера — конспект всё равно синтезируется моделью G4F.)"
+    return TranscriptResult(
+        text=result.text,
+        duration_seconds=result.duration_seconds,
+        engine=result.engine,
     )
-    return stub, 20 * 60
 
 
 async def generate_notes(
@@ -396,7 +265,8 @@ async def generate_notes(
     duration_seconds: int | None,
     transcript: str,
     materials_text: str = "",
-) -> str:
+) -> tuple[str, str]:
+    """Return (markdown_notes, engine_label)."""
     user_prompt = f"""Сгенерируй конспект строго по шаблону Synapse Core.
 
 Предмет: {subject_name}
@@ -405,22 +275,26 @@ async def generate_notes(
 Длительность: {_format_duration(duration_seconds)}
 
 === ТРАНСКРИПТ АУДИО ===
-{transcript}
+{transcript or "(транскрипт недоступен — опирайся на дополнительные материалы)"}
 
 === ДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ ===
 {materials_text or "(нет)"}
 """
     try:
-        return await _chat(SYNAPSE_CORE_SYSTEM_PROMPT, user_prompt, temperature=0.25)
+        notes = await _chat(SYNAPSE_CORE_SYSTEM_PROMPT, user_prompt, temperature=0.25)
+        return notes, "ai"
     except Exception as exc:  # noqa: BLE001
-        logger.error("generate_notes G4F failed: %s", exc)
-        return build_demo_notes(
-            subject_name=subject_name,
-            title=title,
-            lecture_date=lecture_date,
-            duration_seconds=duration_seconds,
-            transcript=transcript,
-            materials_text=materials_text,
+        logger.error("generate_notes failed: %s", exc)
+        return (
+            build_demo_notes(
+                subject_name=subject_name,
+                title=title,
+                lecture_date=lecture_date,
+                duration_seconds=duration_seconds,
+                transcript=transcript,
+                materials_text=materials_text,
+            ),
+            "local",
         )
 
 
@@ -447,12 +321,10 @@ async def enrich_notes(
         notice = "Конспект обновлен с учётом новых материалов."
         if "NOTICE:" in raw:
             body, _, tail = raw.rpartition("NOTICE:")
-            notes = body.strip()
-            notice = tail.strip() or notice
-            return notes, notice
+            return body.strip(), (tail.strip() or notice)
         return raw, notice
     except Exception as exc:  # noqa: BLE001
-        logger.error("enrich_notes G4F failed: %s", exc)
+        logger.error("enrich_notes failed: %s", exc)
         snippet = materials_text.strip()[:500] or "фрагменты слайдов"
         addition = f"""
 
@@ -469,7 +341,10 @@ async def enrich_notes(
 **Блок Фейнмана (Простыми словами):**
 Слайды — это «иллюстрации» к рассказу преподавателя: они не заменяют аудио, а подсвечивают структуру.
 """
-        return existing_notes.rstrip() + addition, "Конспект обновлен. Добавлено 1 уточнение из загруженных слайдов/PDF."
+        return (
+            existing_notes.rstrip() + addition,
+            "Материалы добавлены локально: ИИ был недоступен. " + AI_SETUP_HINT,
+        )
 
 
 async def chat_about_lecture(
@@ -501,7 +376,7 @@ async def chat_about_lecture(
     try:
         return await _chat(system, user_prompt, temperature=0.4)
     except Exception as exc:  # noqa: BLE001
-        logger.error("chat G4F failed: %s", exc)
+        logger.error("chat failed: %s", exc)
         return _offline_chat_reply(
             message,
             exam_mode=exam_mode,
