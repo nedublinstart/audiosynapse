@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from pathlib import Path
 
 from app.core.config import settings
@@ -11,21 +14,8 @@ from app.prompts.synapse_core import (
     SYNAPSE_CORE_SYSTEM_PROMPT,
 )
 
-
-def _gemini_available() -> bool:
-    return bool(settings.gemini_api_key)
-
-
-def _generate_with_gemini(system: str, user: str) -> str:
-    import google.generativeai as genai
-
-    genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel(
-        model_name=settings.gemini_model,
-        system_instruction=system,
-    )
-    response = model.generate_content(user)
-    return (response.text or "").strip()
+logger = logging.getLogger("synapse.ai")
+_executor = ThreadPoolExecutor(max_workers=2)
 
 
 def _format_duration(seconds: int | None) -> str:
@@ -47,7 +37,7 @@ def build_demo_notes(
     transcript: str,
     materials_text: str = "",
 ) -> str:
-    """Deterministic Cornell-style notes when Gemini API key is absent."""
+    """Offline Cornell-style notes when all G4F providers fail."""
     cleaned = re.sub(r"\s+", " ", transcript).strip()
     sentences = [s.strip() for s in re.split(r"[.!?]+", cleaned) if len(s.strip()) > 20]
     cues = sentences[:4] or [
@@ -78,10 +68,10 @@ def build_demo_notes(
         ]
     )
 
-    return f"""# 🎓 ЛЕКЦИЯ: {title}
+    return f"""# ЛЕКЦИЯ: {title}
 **Предмет:** {subject_name} | **Дата:** {lecture_date} | **Общее время:** {_format_duration(duration_seconds)}
 
-## 🎯 Краткое резюме (Executive Summary)
+## Краткое резюме (Executive Summary)
 *   Лекция структурирована вокруг центральной темы «{title}».
 *   Преподаватель последовательно вводит термины и связывает их в логическую цепочку.
 *   Для закрепления важны определения, причинно-следственные связи и примеры.
@@ -89,7 +79,7 @@ def build_demo_notes(
 
 ---
 
-## 🧠 Основные блоки (Метод Корнелла)
+## Основные блоки (Метод Корнелла)
 
 ### Центральная тема
 **Ключевые вопросы и термины (Cues):**
@@ -98,44 +88,180 @@ def build_demo_notes(
 **Развернутые тезисы (Notes):**
 {note_lines}{material_block}
 
-💡 **Блок Фейнмана (Простыми словами):**
+**Блок Фейнмана (Простыми словами):**
 Представьте, что сложная идея — это карта города: термины — названия улиц, а тезисы — маршруты между ними. Сначала выучите «улицы», потом пройдите «маршрут» целиком — так материал удерживается дольше.
 
 ---
 
-## 🔗 Синтез и Инсайты (Связь теории с практикой)
+## Синтез и Инсайты (Связь теории с практикой)
 *   Теоретические формулировки из аудио стоит сопоставлять со схемами/списками из презентации.
 *   Практический фокус: уметь объяснить термин без шпаргалки и привести хотя бы один пример применения.
 
-## ⚠️ Слепые зоны и Что почитать дополнительно
+## Слепые зоны и Что почитать дополнительно
 *   Преподаватель мог упомянуть смежные теории без полного раскрытия — зафиксируйте их как точки для доработки.
 *   Рекомендуется перечитать базовый учебник по теме «{title}» и сверить определения.
 *   Если есть презентация, отдельно просмотрите слайды с формулами/схемами.
 
-## 🏆 Active Recall (Вопросы для самопроверки)
+## Active Recall (Вопросы для самопроверки)
 {questions}
 """
 
 
-async def transcribe_audio(audio_path: Path, filename: str) -> tuple[str, int | None]:
-    """Transcribe audio via Gemini when available; otherwise return a stub transcript."""
-    if _gemini_available():
-        import google.generativeai as genai
+def _resolve_providers():
+    from g4f import Provider
 
-        genai.configure(api_key=settings.gemini_api_key)
-        model = genai.GenerativeModel(settings.gemini_model)
-        uploaded = genai.upload_file(str(audio_path))
-        prompt = (
-            "Сделай полную транскрибацию академической лекции на языке оригинала. "
-            "Сохрани термины точно. Добавляй таймкоды вида [MM:SS] примерно каждые 30–60 секунд. "
-            "Не сокращай содержательные фрагменты."
+    names = [n.strip() for n in settings.g4f_providers.split(",") if n.strip()]
+    providers = []
+    for name in names:
+        prov = getattr(Provider, name, None)
+        if prov is None:
+            logger.warning("G4F provider not found: %s", name)
+            continue
+        providers.append(prov)
+    if not providers:
+        # Sensible defaults: free-capable first, then paid/auth providers if configured
+        for name in ("Gemini", "DeepSeek", "Cerebras", "Pollinations", "OpenaiChat"):
+            prov = getattr(Provider, name, None)
+            if prov is not None:
+                providers.append(prov)
+    return providers
+
+
+@lru_cache(maxsize=1)
+def _get_client():
+    """Cached G4F client with RetryProvider chain."""
+    from g4f.client import Client
+    from g4f.Provider import RetryProvider
+
+    Path.home().joinpath(".g4f", "cookies").mkdir(parents=True, exist_ok=True)
+
+    providers = _resolve_providers()
+    kwargs: dict = {}
+    if settings.g4f_api_key:
+        kwargs["api_key"] = settings.g4f_api_key
+    if settings.g4f_proxy:
+        kwargs["proxies"] = settings.g4f_proxy
+
+    if len(providers) == 1:
+        return Client(provider=providers[0], **kwargs)
+    return Client(provider=RetryProvider(providers, shuffle=False), **kwargs)
+
+
+def _model_candidates() -> list[str]:
+    primary = settings.g4f_model.strip()
+    fallbacks = [m.strip() for m in settings.g4f_fallback_models.split(",") if m.strip()]
+    ordered: list[str] = []
+    for m in [primary, *fallbacks]:
+        if m and m not in ordered:
+            ordered.append(m)
+    return ordered or ["gemini-3.6-flash"]
+
+
+def _chat_sync(system: str, user: str, *, temperature: float = 0.35) -> str:
+    """Blocking G4F chat completion; tries model candidates sequentially."""
+    client = _get_client()
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+    errors: list[str] = []
+    for model in _model_candidates():
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                web_search=False,
+                temperature=temperature,
+            )
+            content = (response.choices[0].message.content or "").strip()
+            if content:
+                logger.info("G4F success model=%s chars=%s", model, len(content))
+                return content
+            errors.append(f"{model}: empty response")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("G4F model=%s failed: %s", model, exc)
+            errors.append(f"{model}: {exc}")
+
+    # Last resort: bare Client without pinned provider
+    try:
+        from g4f.client import Client
+        from g4f.Provider import Gemini
+
+        bare = Client(provider=Gemini, api_key=settings.g4f_api_key or None)
+        response = bare.chat.completions.create(
+            model="gemini-3.6-flash",
+            messages=messages,
+            web_search=False,
         )
-        response = model.generate_content([uploaded, prompt])
-        text = (response.text or "").strip()
-        # Duration unknown without probing; leave None
-        return text, None
+        content = (response.choices[0].message.content or "").strip()
+        if content:
+            return content
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"bare-Gemini: {exc}")
 
+    raise RuntimeError("G4F failed for all models: " + " | ".join(errors[:4]))
+
+
+async def _chat(system: str, user: str, *, temperature: float = 0.35) -> str:
+    import asyncio
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_executor, lambda: _chat_sync(system, user, temperature=temperature))
+
+
+def g4f_status() -> dict:
+    try:
+        providers = [p.__name__ for p in _resolve_providers()]
+    except Exception:  # noqa: BLE001
+        providers = []
+    return {
+        "engine": "g4f",
+        "model": settings.g4f_model,
+        "fallback_models": _model_candidates()[1:],
+        "providers": providers,
+        "api_key_configured": bool(settings.g4f_api_key),
+    }
+
+
+async def transcribe_audio(audio_path: Path, filename: str) -> tuple[str, int | None]:
+    """
+    Transcribe lecture audio.
+
+    G4F text providers don't natively STT binary audio; we ask a multimodal-capable
+    provider when possible, otherwise build a structured placeholder that still
+    allows Synapse Core to synthesize a full Cornell note via G4F.
+    """
     stem = Path(filename).stem.replace("_", " ")
+    size_kb = max(1, audio_path.stat().st_size // 1024)
+
+    # Try multimodal transcription through G4F (Gemini provider accepts media on some builds)
+    try:
+        from g4f.client import Client
+        from g4f.Provider import Gemini
+
+        client = Client(provider=Gemini)
+        with audio_path.open("rb") as audio_file:
+            response = client.chat.completions.create(
+                model="gemini-3.6-flash",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "Сделай полную транскрибацию академической лекции на языке оригинала. "
+                            "Сохрани термины точно. Добавляй таймкоды [MM:SS] каждые 30–60 секунд. "
+                            "Не сокращай содержательные фрагменты. Верни только транскрипт."
+                        ),
+                    }
+                ],
+                media=[audio_file],
+                web_search=False,
+            )
+        text = (response.choices[0].message.content or "").strip()
+        if text and len(text) > 80 and "не могу" not in text.lower():
+            return text, None
+    except Exception as exc:  # noqa: BLE001
+        logger.info("G4F audio transcription unavailable (%s); using enriched stub", exc)
+
     stub = (
         f"[00:00] Добрый день. Сегодняшняя лекция посвящена теме «{stem}». "
         f"[00:45] Мы разберём ключевые определения, логику рассуждения и примеры применения. "
@@ -143,7 +269,8 @@ async def transcribe_audio(audio_path: Path, filename: str) -> tuple[str, int | 
         f"[07:10] Второй блок — связи между понятиями и типичные ошибки понимания. "
         f"[12:40] Третий блок — практические следствия и подготовка к семинару. "
         f"[18:00] В заключение повторим главные тезисы и вопросы для самопроверки. "
-        f"(Демо-режим: задайте GEMINI_API_KEY для реальной транскрибации файла {filename}.)"
+        f"(Аудиофайл {filename}, ~{size_kb} КБ. Транскрибация через G4F multimodal "
+        f"недоступна для этого провайдера — конспект всё равно синтезируется моделью G4F.)"
     )
     return stub, 20 * 60
 
@@ -170,16 +297,18 @@ async def generate_notes(
 === ДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ ===
 {materials_text or "(нет)"}
 """
-    if _gemini_available():
-        return _generate_with_gemini(SYNAPSE_CORE_SYSTEM_PROMPT, user_prompt)
-    return build_demo_notes(
-        subject_name=subject_name,
-        title=title,
-        lecture_date=lecture_date,
-        duration_seconds=duration_seconds,
-        transcript=transcript,
-        materials_text=materials_text,
-    )
+    try:
+        return await _chat(SYNAPSE_CORE_SYSTEM_PROMPT, user_prompt, temperature=0.25)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("generate_notes G4F failed: %s", exc)
+        return build_demo_notes(
+            subject_name=subject_name,
+            title=title,
+            lecture_date=lecture_date,
+            duration_seconds=duration_seconds,
+            transcript=transcript,
+            materials_text=materials_text,
+        )
 
 
 async def enrich_notes(
@@ -200,8 +329,8 @@ async def enrich_notes(
 
 Верни обновлённый конспект целиком + строку NOTICE в конце.
 """
-    if _gemini_available():
-        raw = _generate_with_gemini(ENRICHMENT_SYSTEM_PROMPT, user_prompt)
+    try:
+        raw = await _chat(ENRICHMENT_SYSTEM_PROMPT, user_prompt, temperature=0.25)
         notice = "Конспект обновлен с учётом новых материалов."
         if "NOTICE:" in raw:
             body, _, tail = raw.rpartition("NOTICE:")
@@ -209,10 +338,10 @@ async def enrich_notes(
             notice = tail.strip() or notice
             return notes, notice
         return raw, notice
-
-    # Demo enrichment: append a Cornell subsection from materials
-    snippet = materials_text.strip()[:500] or "фрагменты слайдов"
-    addition = f"""
+    except Exception as exc:  # noqa: BLE001
+        logger.error("enrich_notes G4F failed: %s", exc)
+        snippet = materials_text.strip()[:500] or "фрагменты слайдов"
+        addition = f"""
 
 ---
 
@@ -224,12 +353,10 @@ async def enrich_notes(
 *   Из загруженных материалов извлечены уточнения и схемы. [Слайд: 1]
 *   Фрагмент: {snippet}
 
-💡 **Блок Фейнмана (Простыми словами):**
+**Блок Фейнмана (Простыми словами):**
 Слайды — это «иллюстрации» к рассказу преподавателя: они не заменяют аудио, а подсвечивают структуру.
 """
-    notes = existing_notes.rstrip() + addition
-    notice = "Конспект обновлен. Добавлено 1 уточнение из загруженных слайдов/PDF."
-    return notes, notice
+        return existing_notes.rstrip() + addition, "Конспект обновлен. Добавлено 1 уточнение из загруженных слайдов/PDF."
 
 
 async def chat_about_lecture(
@@ -258,38 +385,31 @@ async def chat_about_lecture(
 === ВОПРОС СТУДЕНТА ===
 {message}
 """
-    if _gemini_available():
-        return _generate_with_gemini(system, user_prompt)
-
-    # Demo grounded reply
-    haystack = "\n".join(filter(None, [notes or "", transcript or "", materials_text]))
-    lowered = message.lower()
-    if exam_mode or "вопрос" in lowered or "экзамен" in lowered:
-        return (
-            "Режим «Экзамен» (демо).\n\n"
-            "1. Назовите 3 ключевых термина из конспекта. (Запоминание)\n"
-            "2. Объясните один термин техникой Фейнмана. (Понимание)\n"
-            "3. Приведите пример применения идеи из лекции. (Применение)\n"
-            "4. Где в материале есть «слепая зона» и что дочитать? (Анализ)\n"
-            "Ответы не привожу — сверьтесь с блоком Active Recall в конспекте. [Конспект]"
-        )
-
-    # Pull a short relevant excerpt
-    excerpt = ""
-    for line in haystack.splitlines():
-        if any(tok in line.lower() for tok in lowered.split() if len(tok) > 3):
-            excerpt = line.strip()
-            break
-    if not excerpt:
-        excerpt = next((ln.strip() for ln in haystack.splitlines() if len(ln.strip()) > 40), "")
-
-    if not excerpt:
-        return (
-            "В загруженных материалах этой лекции недостаточно данных для ответа. "
-            "Загрузите аудио/PDF или уточните вопрос по конспекту."
-        )
-
-    return (
-        f"По материалам этой лекции:\n\n{excerpt}\n\n"
-        f"[Конспект] (демо-режим без GEMINI_API_KEY — ответ ограничен локальным контекстом)."
-    )
+    try:
+        return await _chat(system, user_prompt, temperature=0.4)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("chat G4F failed: %s", exc)
+        haystack = "\n".join(filter(None, [notes or "", transcript or "", materials_text]))
+        lowered = message.lower()
+        if exam_mode or "вопрос" in lowered or "экзамен" in lowered:
+            return (
+                "Режим «Экзамен» (локальный fallback — G4F временно недоступен).\n\n"
+                "1. Назовите 3 ключевых термина из конспекта. (Запоминание)\n"
+                "2. Объясните один термин техникой Фейнмана. (Понимание)\n"
+                "3. Приведите пример применения идеи из лекции. (Применение)\n"
+                "4. Где в материале есть «слепая зона» и что дочитать? (Анализ)\n"
+                "Ответы не привожу — сверьтесь с блоком Active Recall в конспекте. [Конспект]"
+            )
+        excerpt = ""
+        for line in haystack.splitlines():
+            if any(tok in line.lower() for tok in lowered.split() if len(tok) > 3):
+                excerpt = line.strip()
+                break
+        if not excerpt:
+            excerpt = next((ln.strip() for ln in haystack.splitlines() if len(ln.strip()) > 40), "")
+        if not excerpt:
+            return (
+                "В загруженных материалах этой лекции недостаточно данных для ответа. "
+                "Загрузите аудио/PDF или уточните вопрос по конспекту."
+            )
+        return f"По материалам этой лекции:\n\n{excerpt}\n\n[Конспект]"

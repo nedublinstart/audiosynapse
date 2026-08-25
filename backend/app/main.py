@@ -41,8 +41,10 @@ def on_startup() -> None:
 
 @app.get("/api/health")
 def health() -> dict:
+    from app.services import ai
+
     return {
         "status": "ok",
         "app": settings.app_name,
-        "gemini_configured": bool(settings.gemini_api_key),
+        "ai": ai.g4f_status(),
     }
