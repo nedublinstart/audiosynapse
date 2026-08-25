@@ -13,11 +13,14 @@ const isWin = process.platform === "win32";
 
 function run(cmd, args, opts = {}) {
   console.log(`\n> ${cmd} ${args.join(" ")}`);
+  // Absolute .exe paths on Windows must NOT use shell:true — it breaks -c quoting.
+  const useShell = opts.shell !== undefined ? opts.shell : false;
   const r = spawnSync(cmd, args, {
     stdio: "inherit",
     cwd: opts.cwd || root,
-    shell: isWin,
+    shell: useShell,
     env: { ...process.env, ...(opts.env || {}) },
+    windowsHide: true,
   });
   if (r.status !== 0) {
     throw new Error(`Command failed (${r.status}): ${cmd} ${args.join(" ")}`);
