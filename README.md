@@ -14,13 +14,16 @@ npm run setup
 npm run dev
 ```
 
-Откроется http://127.0.0.1:3000  
-API: http://127.0.0.1:8787 (порт **не** 8000 — на Windows 11 он часто заблокирован, WinError 10013)
+Браузер откроется сам. Порты подбираются автоматически:
 
-Стоп: `Ctrl+C` или `npm run stop`
+- сайт — `3000` (или `3001`/`3002`, если занят)
+- API — `8787` (**не** 8000: на Windows 11 он часто заблокирован, WinError 10013)
 
-Или кнопки: `SETUP.bat` → `START.bat` → `STOP.bat` (см. `START_HERE.txt`).  
-Если что-то падает на Windows — открой `FIX_WINDOWS.txt`.
+Стоп: `Ctrl+C` или `npm run stop`  
+Диагностика: `npm run doctor` — покажет, что именно сломано
+
+Или кнопки: `SETUP.bat` → `START.bat` → `DOCTOR.bat` → `STOP.bat` (см. `START_HERE.txt`).  
+Разбор конкретных ошибок — `FIX_WINDOWS.txt`.
 
 ## Стек
 
@@ -52,9 +55,12 @@ API_PROXY_TARGET=http://127.0.0.1:8787 npm run dev
 
 ## AI (G4F)
 
-По умолчанию: модель `gemini-3.6-flash`, провайдеры `Gemini → AnyProvider → …`.
-Текстовый чат **не требует ffmpeg** (предупреждение pydub можно игнорировать).
-Сильнее модели — через `G4F_API_KEY` / cookies в `~/.g4f/cookies`.
+По умолчанию: модель `gemini-3.6-flash`, провайдеры `Gemini → AnyProvider → PollinationsAI → …`.
+
+- Каждая попытка ограничена таймаутом 45 с, поэтому чат не «висит».
+- Текстовый чат **не требует ffmpeg**.
+- Если все провайдеры недоступны, чат отвечает локально по тексту конспекта.
+- Сильнее модели — через `G4F_API_KEY` / cookies в `~/.g4f/cookies`.
 
 ## Переменные окружения
 
