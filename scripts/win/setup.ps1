@@ -11,19 +11,20 @@ Write-Host "Root: $Root"
 Write-Host ""
 
 function Find-Python {
-  $cmds = @("py -3", "python", "python3")
-  foreach ($c in $cmds) {
+  # Prefer Windows py launcher
+  if (Get-Command py -ErrorAction SilentlyContinue) {
     try {
-      $parts = $c -split " "
-      $exe = $parts[0]
-      $args = @()
-      if ($parts.Length -gt 1) { $args = $parts[1..($parts.Length - 1)] }
-      $args += @("--version")
-      $out = & $exe @args 2>&1 | Out-String
-      if ($LASTEXITCODE -eq 0 -or $out -match "Python 3") {
-        return $c
-      }
+      $v = & py -3 --version 2>&1 | Out-String
+      if ($v -match "Python 3") { return @{ Exe = "py"; Args = @("-3") } }
     } catch { }
+  }
+  foreach ($name in @("python", "python3")) {
+    if (Get-Command $name -ErrorAction SilentlyContinue) {
+      try {
+        $v = & $name --version 2>&1 | Out-String
+        if ($v -match "Python 3") { return @{ Exe = $name; Args = @() } }
+      } catch { }
+    }
   }
   return $null
 }
@@ -34,15 +35,15 @@ function Assert-Cmd($Name) {
   }
 }
 
-$py = Find-Python
-if (-not $py) {
+$pyInfo = Find-Python
+if (-not $pyInfo) {
   throw "Python 3 не найден. Поставь с https://www.python.org/downloads/ (галочка Add to PATH)"
 }
 Assert-Cmd "npm"
 Assert-Cmd "node"
 
 Write-Host "[1/4] Python: " -NoNewline
-Invoke-Expression "$py --version"
+& $pyInfo.Exe (@($pyInfo.Args) + @("--version"))
 Write-Host "[1/4] Node:  " -NoNewline
 node --version
 Write-Host ""
@@ -55,10 +56,12 @@ $PipExe = Join-Path $Venv "Scripts\pip.exe"
 
 Write-Host "[2/4] Backend venv + зависимости..." -ForegroundColor Yellow
 if (-not (Test-Path $PyExe)) {
-  Invoke-Expression "$py -m venv `"$Venv`""
+  & $pyInfo.Exe (@($pyInfo.Args) + @("-m", "venv", $Venv))
+  if (-not (Test-Path $PyExe)) { throw "Не удалось создать venv: $Venv" }
 }
 & $PyExe -m pip install --upgrade pip
 & $PipExe install -r (Join-Path $Backend "requirements.txt")
+if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements.txt завершился с ошибкой" }
 
 $EnvExample = Join-Path $Backend ".env.example"
 $EnvFile = Join-Path $Backend ".env"
