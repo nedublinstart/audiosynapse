@@ -17,6 +17,7 @@ frontend/.env*.local
 
 # Launcher runtime
 .run/
+node_modules/
 
 # OS / IDE
 .DS_Store
