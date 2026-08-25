@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Mic,
   Printer,
+  RefreshCw,
   Send,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
@@ -104,6 +105,19 @@ function LectureInner() {
     }
   }
 
+  async function onReprocess() {
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await api.reprocessLecture(lectureId);
+      setLecture(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось перезапустить обработку");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onChat(e: FormEvent) {
     e.preventDefault();
     if (!message.trim()) return;
@@ -188,7 +202,7 @@ function LectureInner() {
             <input
               ref={audioRef}
               type="file"
-              accept=".mp3,.wav,.m4a,.ogg,audio/*"
+              accept=".mp3,.wav,.m4a,.ogg,.opus,.aac,.flac,.wma,.amr,.mp4,.webm,audio/*"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -222,6 +236,15 @@ function LectureInner() {
             >
               <FileUp size={16} /> Материал
             </button>
+            {lecture.audio_filename && lecture.status !== "processing" ? (
+              <button
+                className="btn-outline col-span-2 sm:!w-auto"
+                disabled={busy}
+                onClick={() => void onReprocess()}
+              >
+                <RefreshCw size={16} /> Обработать снова
+              </button>
+            ) : null}
           </div>
         </div>
       </FadeIn>

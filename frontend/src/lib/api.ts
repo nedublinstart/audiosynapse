@@ -182,6 +182,8 @@ export const api = {
       body: form,
     }, true);
   },
+  reprocessLecture: (lectureId: number) =>
+    request<Lecture>(`/api/lectures/${lectureId}/reprocess`, { method: "POST" }),
   listChat: (lectureId: number) =>
     request<ChatMessage[]>(`/api/lectures/${lectureId}/chat`),
   chat: (lectureId: number, message: string, exam_mode = false) =>
