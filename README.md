@@ -5,15 +5,19 @@
 Превращает аудиолекции и доп. материалы (PDF/DOCX/слайды) в конспекты по гибридной методике:
 **Cornell + Feynman + Bloom**, с маркировкой источников и контекстным ИИ-чатом по лекции.
 
-## Windows 11 — запуск в 2 клика
+## Windows — самый простой способ
 
-1. Установи [Python 3](https://www.python.org/downloads/) (галочка **Add to PATH**) и [Node.js LTS](https://nodejs.org/).
-2. В папке проекта дважды кликни:
-   - **`SETUP.bat`** — один раз (ставит зависимости)
-   - **`START.bat`** — каждый раз (backend + frontend + браузер)
-3. Остановка: **`STOP.bat`**
+В папке проекта открой **cmd** (в проводнике в адресной строке набери `cmd` + Enter) и выполни:
 
-Подробности: `START_HERE.txt`
+```bat
+npm run setup
+npm run dev
+```
+
+Откроется http://127.0.0.1:3000  
+Стоп: `Ctrl+C` или `npm run stop`
+
+Или кнопки: `SETUP.bat` → `START.bat` → `STOP.bat` (см. `START_HERE.txt`).
 
 ## Стек
 

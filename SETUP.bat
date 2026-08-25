@@ -1,13 +1,9 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
-title Synapse — установка
+echo Synapse SETUP
 echo.
-echo  === Synapse SETUP ===
-echo  Папка: %cd%
+npm run setup
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\win\setup.ps1"
-echo.
-echo  Готово. Дальше дважды кликни START.bat
-echo.
+echo Next: npm run dev
+echo Or double-click START.bat
 pause

@@ -1,0 +1,20 @@
+{
+  "name": "synapse",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Synapse — quick start (npm run setup && npm run dev)",
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "dev": "node scripts/dev.js",
+    "start": "node scripts/dev.js",
+    "stop": "node scripts/stop.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "open": "^10.1.0",
+    "wait-on": "^8.0.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
