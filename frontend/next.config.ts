@@ -1,12 +1,13 @@
 import type { NextConfig } from "next";
 
+const API_ORIGIN = process.env.API_PROXY_TARGET || "http://127.0.0.1:8000";
+
 const nextConfig: NextConfig = {
   async rewrites() {
-    const api = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
     return [
       {
-        source: "/backend/:path*",
-        destination: `${api}/:path*`,
+        source: "/api/:path*",
+        destination: `${API_ORIGIN}/api/:path*`,
       },
     ];
   },

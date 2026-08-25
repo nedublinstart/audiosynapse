@@ -28,7 +28,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const me = await api.me();
+      const me = await Promise.race([
+        api.me(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Auth timeout")), 8000)
+        ),
+      ]);
       setUser(me);
     } catch {
       setToken(null);

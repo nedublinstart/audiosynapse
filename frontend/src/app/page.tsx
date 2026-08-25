@@ -41,11 +41,15 @@ export default function HomePage() {
         технике Фейнмана и таксономии Блума — с контекстным ИИ-чатом по вашей лекции.
       </p>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Link href="/login" className="btn-primary">
           Войти
         </Link>
-        <Link href="/register" className="btn-ghost panel !px-4 !py-2">
+        <Link
+          href="/register"
+          className="btn-ghost inline-flex items-center rounded-lg border px-4 py-2"
+          style={{ borderColor: "var(--border)", background: "var(--bg-elevated)" }}
+        >
           Создать аккаунт
         </Link>
       </div>

@@ -44,6 +44,13 @@ function LectureInner() {
   }, [lectureId]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "chat") setTab("chat");
+    if (params.get("exam") === "1") setExamMode(true);
+  }, []);
+
+  useEffect(() => {
     void load().catch((e) => setError(e.message));
   }, [load]);
 

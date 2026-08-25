@@ -1,4 +1,6 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Same-origin by default so the browser talks to Next.js rewrites → FastAPI.
+// Override with NEXT_PUBLIC_API_URL only when the API is on another host.
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export type LectureStatus =
   | "awaiting_audio"
