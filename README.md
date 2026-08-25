@@ -30,11 +30,14 @@ API docs: http://localhost:8000/docs
 ```bash
 cd frontend
 npm install
-echo 'NEXT_PUBLIC_API_URL=http://localhost:8000' > .env.local
+# Same-origin /api proxy to backend (recommended):
+echo 'NEXT_PUBLIC_API_URL=' > .env.local
 npm run dev
 ```
 
 Откройте http://localhost:3000
+
+> Next.js проксирует `/api/*` на FastAPI (`API_PROXY_TARGET`, по умолчанию `http://127.0.0.1:8000`).
 
 ## MVP (Этап 1–3 каркас)
 
