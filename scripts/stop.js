@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-/** Best-effort stop for ports 3000/8000 on Windows/macOS/Linux */
+/** Best-effort stop for Synapse ports on Windows/macOS/Linux */
 const { spawnSync } = require("child_process");
 const isWin = process.platform === "win32";
+
+const PORTS = [3000, 8787, 8765, 8899, 18080, 8000];
 
 function killPort(port) {
   if (isWin) {
@@ -29,7 +31,6 @@ function killPort(port) {
   }
 }
 
-console.log("Stopping Synapse ports 3000 & 8000...");
-killPort(3000);
-killPort(8000);
+console.log("Stopping Synapse ports:", PORTS.join(", "));
+for (const port of PORTS) killPort(port);
 console.log("Done.");

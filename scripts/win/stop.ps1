@@ -20,7 +20,7 @@ foreach ($name in @("backend.pid", "frontend.pid")) {
   }
 }
 
-foreach ($port in 8000, 3000) {
+foreach ($port in 8787, 8765, 8899, 18080, 8000, 3000) {
   $lines = netstat -ano | Select-String ":$port\s+.*LISTENING"
   foreach ($line in $lines) {
     $parts = ($line.ToString() -split "\s+") | Where-Object { $_ -ne "" }

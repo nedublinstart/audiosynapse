@@ -92,11 +92,13 @@ foreach ($name in @("backend.pid", "frontend.pid")) {
   }
 }
 
-if (Test-Port 8000) {
-  Write-Host "Порт 8000 уже занят — backend, похоже, уже запущен." -ForegroundColor DarkYellow
+# 8787 — не 8000: на Win11 порт 8000 часто в excludedportrange (WinError 10013)
+$ApiPort = 8787
+if (Test-Port $ApiPort) {
+  Write-Host "Порт $ApiPort уже занят — backend, похоже, уже запущен." -ForegroundColor DarkYellow
 } else {
-  Write-Host "Стартую backend :8000 ..." -ForegroundColor Yellow
-  $backendLine = "set PYTHONPATH=. && `"$VenvPy`" -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+  Write-Host "Стартую backend :$ApiPort ..." -ForegroundColor Yellow
+  $backendLine = "set PYTHONPATH=. && `"$VenvPy`" -m uvicorn app.main:app --reload --host 127.0.0.1 --port $ApiPort"
   $bp = Start-CmdWindow "Synapse Backend" $Backend $backendLine
   Set-Content -Path (Join-Path $PidDir "backend.pid") -Value $bp.Id
 }
@@ -105,16 +107,16 @@ if (Test-Port 3000) {
   Write-Host "Порт 3000 уже занят — frontend, похоже, уже запущен." -ForegroundColor DarkYellow
 } else {
   Write-Host "Стартую frontend :3000 ..." -ForegroundColor Yellow
-  $frontLine = "npm run dev -- --hostname 127.0.0.1 --port 3000"
+  $frontLine = "set API_PROXY_TARGET=http://127.0.0.1:$ApiPort&& npm run dev -- --hostname 127.0.0.1 --port 3000"
   $fp = Start-CmdWindow "Synapse Frontend" $Frontend $frontLine
   Set-Content -Path (Join-Path $PidDir "frontend.pid") -Value $fp.Id
 }
 
 Write-Host "Жду готовности..." -ForegroundColor Yellow
-$okApi = Wait-Http "http://127.0.0.1:8000/api/health" 120
+$okApi = Wait-Http "http://127.0.0.1:$ApiPort/api/health" 120
 $okWeb = Wait-Http "http://127.0.0.1:3000/" 180
 
-if ($okApi) { Write-Host "API  OK   http://127.0.0.1:8000/docs" -ForegroundColor Green }
+if ($okApi) { Write-Host "API  OK   http://127.0.0.1:$ApiPort/docs" -ForegroundColor Green }
 else { Write-Host "API ещё не поднялся — смотри окно Synapse Backend" -ForegroundColor DarkYellow }
 
 if ($okWeb) { Write-Host "WEB  OK   http://127.0.0.1:3000" -ForegroundColor Green }

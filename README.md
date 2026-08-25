@@ -15,9 +15,12 @@ npm run dev
 ```
 
 Откроется http://127.0.0.1:3000  
+API: http://127.0.0.1:8787 (порт **не** 8000 — на Windows 11 он часто заблокирован, WinError 10013)
+
 Стоп: `Ctrl+C` или `npm run stop`
 
-Или кнопки: `SETUP.bat` → `START.bat` → `STOP.bat` (см. `START_HERE.txt`).
+Или кнопки: `SETUP.bat` → `START.bat` → `STOP.bat` (см. `START_HERE.txt`).  
+Если что-то падает на Windows — открой `FIX_WINDOWS.txt`.
 
 ## Стек
 
@@ -33,7 +36,7 @@ npm run dev
 cd backend
 python3 -m pip install -r requirements.txt
 cp -n .env.example .env
-PYTHONPATH=. python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+PYTHONPATH=. python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8787
 ```
 
 ### Frontend
@@ -42,7 +45,7 @@ PYTHONPATH=. python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 cd frontend
 npm install
 echo 'NEXT_PUBLIC_API_URL=' > .env.local
-npm run dev
+API_PROXY_TARGET=http://127.0.0.1:8787 npm run dev
 ```
 
 Откройте http://localhost:3000

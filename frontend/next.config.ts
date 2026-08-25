@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-const API_ORIGIN = process.env.API_PROXY_TARGET || "http://127.0.0.1:8000";
+const API_ORIGIN = process.env.API_PROXY_TARGET || "http://127.0.0.1:8787";
 
 const nextConfig: NextConfig = {
   async rewrites() {
