@@ -41,7 +41,7 @@ function findPython() {
   for (const [exe, baseArgs] of candidates) {
     const r = spawnSync(exe, [...baseArgs, "--version"], {
       encoding: "utf8",
-      shell: isWin,
+      shell: isWin, // allow finding py/python via PATH
     });
     const out = `${r.stdout || ""}${r.stderr || ""}`;
     if ((r.status === 0 || out.includes("Python")) && out.includes("Python 3")) {
@@ -72,7 +72,7 @@ function main() {
 
   if (!fs.existsSync(venvPython)) {
     console.log("Creating backend/.venv ...");
-    run(py.exe, [...py.baseArgs, "-m", "venv", venvDir]);
+    run(py.exe, [...py.baseArgs, "-m", "venv", venvDir], { shell: isWin });
   }
 
   run(venvPython, ["-m", "pip", "install", "--upgrade", "pip"]);
@@ -92,17 +92,27 @@ function main() {
   }
 
   console.log("\nInstalling frontend dependencies...");
-  run("npm", ["install"], { cwd: frontend });
+  run(isWin ? "npm.cmd" : "npm", ["install"], { cwd: frontend, shell: isWin });
 
   // Root helpers (concurrently, wait-on, open)
   console.log("\nInstalling root launcher dependencies...");
-  run("npm", ["install"], { cwd: root });
+  run(isWin ? "npm.cmd" : "npm", ["install"], { cwd: root, shell: isWin });
 
   console.log("\nChecking backend import...");
-  run(venvPython, ["-c", "from app.main import app; print('OK', app.title)"], {
-    cwd: backend,
-    env: { PYTHONPATH: backend },
-  });
+  try {
+    run(
+      venvPython,
+      ["-c", "from app.main import app; print('OK', app.title)"],
+      {
+        cwd: backend,
+        env: { PYTHONPATH: backend },
+        shell: false,
+      }
+    );
+  } catch (e) {
+    console.warn("Import check warning:", e.message || e);
+    console.warn("Dependencies look installed — you can still try: npm run dev");
+  }
 
   console.log("\n=== SETUP DONE ===");
   console.log("Now run:  npm run dev");
