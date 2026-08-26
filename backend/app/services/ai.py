@@ -16,6 +16,12 @@ from app.services.llm import LLMUnavailable
 
 logger = logging.getLogger("synapse.ai")
 
+MAX_NOTES_CHARS = 12_000
+MAX_TRANSCRIPT_CHARS = 6_000
+MAX_MATERIALS_CHARS = 4_000
+MAX_HISTORY_MSG_CHARS = 600
+MAX_NOTES_TRANSCRIPT_CHARS = 20_000
+
 AI_SETUP_HINT = (
     "Похоже, бесплатные ИИ-провайдеры недоступны из твоей сети. "
     "Проверь командой `npm run ai-check` и при необходимости добавь свой ключ "
@@ -44,16 +50,40 @@ def _format_duration(seconds: int | None) -> str:
     return f"{m} мин"
 
 
+def _trim(text: str | None, limit: int, label: str = "") -> str:
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    suffix = f"… ({label} обрезан для скорости)" if label else "…"
+    return text[:limit] + suffix
+
+
+def _trim_history(history: list[dict[str, str]]) -> str:
+    lines: list[str] = []
+    for msg in history[-6:]:
+        role = msg.get("role", "user").upper()
+        content = _trim(msg.get("content", ""), MAX_HISTORY_MSG_CHARS)
+        lines.append(f"{role}: {content}")
+    return "\n".join(lines)
+
+
 async def _chat(system: str, user: str, *, temperature: float = 0.35) -> str:
     import asyncio
+    import time
 
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
+    started = time.perf_counter()
     loop = asyncio.get_running_loop()
     answer = await loop.run_in_executor(None, lambda: llm.chat(messages, temperature=temperature))
-    logger.info("AI answer via %s (%s chars)", answer.engine, len(answer.content))
+    logger.info(
+        "AI answer via %s (%s chars, %.1fs)",
+        answer.engine,
+        len(answer.content),
+        time.perf_counter() - started,
+    )
     return answer.content
 
 
@@ -275,10 +305,10 @@ async def generate_notes(
 Длительность: {_format_duration(duration_seconds)}
 
 === ТРАНСКРИПТ АУДИО ===
-{transcript or "(транскрипт недоступен — опирайся на дополнительные материалы)"}
+{_trim(transcript, MAX_NOTES_TRANSCRIPT_CHARS, "транскрипт") or "(транскрипт недоступен — опирайся на дополнительные материалы)"}
 
 === ДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ ===
-{materials_text or "(нет)"}
+{_trim(materials_text, MAX_MATERIALS_CHARS, "материалы") or "(нет)"}
 """
     try:
         notes = await _chat(SYNAPSE_CORE_SYSTEM_PROMPT, user_prompt, temperature=0.25)
@@ -356,19 +386,33 @@ async def chat_about_lecture(
     materials_text: str,
     history: list[dict[str, str]],
 ) -> str:
+    if _is_greeting(message) and len(message.strip()) < 48:
+        return (
+            "Привет! Я Synapse Tutor — задавай вопросы по конспекту, транскрипту "
+            "или материалам этой лекции. Включи режим «Экзамен», если хочешь "
+            "проверку по Bloom."
+        )
+
     system = EXAM_SYSTEM_PROMPT if exam_mode else CHAT_SYSTEM_PROMPT
-    history_txt = "\n".join(f"{m['role'].upper()}: {m['content']}" for m in history[-8:])
+    notes_block = _trim(notes, MAX_NOTES_CHARS, "конспект") or "(конспект ещё не готов)"
+    if notes and len(notes.strip()) > 400:
+        transcript_block = "(опущен — есть готовый конспект)"
+    else:
+        transcript_block = _trim(transcript, MAX_TRANSCRIPT_CHARS, "транскрипт") or "(нет)"
+    materials_block = _trim(materials_text, MAX_MATERIALS_CHARS, "материалы") or "(нет)"
+    history_txt = _trim_history(history) or "(пусто)"
+
     user_prompt = f"""=== КОНСПЕКТ ===
-{notes or "(конспект ещё не готов)"}
+{notes_block}
 
 === ТРАНСКРИПТ ===
-{transcript or "(нет)"}
+{transcript_block}
 
 === МАТЕРИАЛЫ ===
-{materials_text or "(нет)"}
+{materials_block}
 
 === ИСТОРИЯ ===
-{history_txt or "(пусто)"}
+{history_txt}
 
 === ВОПРОС СТУДЕНТА ===
 {message}

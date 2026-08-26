@@ -37,7 +37,7 @@ function LectureInner() {
   const [error, setError] = useState("");
   const audioRef = useRef<HTMLInputElement>(null);
   const materialRef = useRef<HTMLInputElement>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -58,15 +58,20 @@ function LectureInner() {
   }, [load]);
 
   useEffect(() => {
-    if (lecture?.status === "processing") {
-      pollRef.current = setInterval(() => {
-        void load();
-      }, 2000);
-      return () => {
-        if (pollRef.current) clearInterval(pollRef.current);
-      };
+    if (lecture?.status !== "processing") {
+      if (pollRef.current) clearTimeout(pollRef.current);
+      return;
     }
-    if (pollRef.current) clearInterval(pollRef.current);
+    const started = Date.now();
+    const tick = () => {
+      void load();
+      const delay = Date.now() - started < 30_000 ? 1000 : 3000;
+      pollRef.current = setTimeout(tick, delay);
+    };
+    pollRef.current = setTimeout(tick, 1000);
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
   }, [lecture?.status, load]);
 
   useEffect(() => {
@@ -120,23 +125,23 @@ function LectureInner() {
 
   async function onChat(e: FormEvent) {
     e.preventDefault();
-    if (!message.trim()) return;
+    if (!message.trim() || busy) return;
     const text = message.trim();
     setMessage("");
     setBusy(true);
+    const optimistic: ChatMessage = {
+      id: Date.now(),
+      role: "user",
+      content: text,
+      exam_mode: examMode,
+      created_at: new Date().toISOString(),
+    };
+    setChat((prev) => [...prev, optimistic]);
     try {
-      const optimistic: ChatMessage = {
-        id: Date.now(),
-        role: "user",
-        content: text,
-        exam_mode: examMode,
-        created_at: new Date().toISOString(),
-      };
-      setChat((prev) => [...prev, optimistic]);
-      await api.chat(lectureId, text, examMode);
-      const history = await api.listChat(lectureId);
-      setChat(history);
+      const assistant = await api.chat(lectureId, text, examMode);
+      setChat((prev) => [...prev, assistant]);
     } catch (err) {
+      setChat((prev) => prev.filter((m) => m.id !== optimistic.id));
       setError(err instanceof Error ? err.message : "Ошибка чата");
     } finally {
       setBusy(false);
@@ -372,6 +377,18 @@ function LectureInner() {
                 <p className="text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
                   Например: «Объясни разницу между понятиями на примерах из этой лекции».
                 </p>
+              ) : null}
+              {busy ? (
+                <div
+                  className="max-w-[85%] rounded-[12px] px-3 py-2.5 text-sm animate-fade-up"
+                  style={{ background: "var(--bg-soft)", color: "var(--fg-muted)" }}
+                >
+                  <span
+                    className="processing-dot mr-2 inline-block h-2 w-2 rounded-full align-middle"
+                    style={{ background: "var(--processing)" }}
+                  />
+                  Synapse думает…
+                </div>
               ) : null}
               <div ref={chatEndRef} />
             </div>

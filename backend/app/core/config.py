@@ -23,14 +23,17 @@ class Settings(BaseSettings):
     ai_transcribe_model: str = ""
 
     # Shared AI behaviour
-    ai_timeout_seconds: float = 45.0
+    ai_timeout_seconds: float = 30.0
+    ai_probe_timeout_seconds: float = 12.0
+    ai_probe_workers: int = 6
     ai_max_attempts: int = 8
-    ai_cache_seconds: float = 600.0
+    ai_cache_seconds: float = 3600.0
     transcribe_timeout_seconds: float = 600.0
 
-    # Local speech-to-text (faster-whisper). "small" is the best quality/speed
-    # trade-off for Russian lectures; "base" is ~2x faster but less accurate.
-    whisper_model: str = "small"
+    # Local speech-to-text (faster-whisper). "base" is the default speed/quality
+    # balance; use "small" when accuracy matters more than latency.
+    whisper_model: str = "base"
+    whisper_beam_size: int = 1
     # Empty = autodetect. Set e.g. "ru" or "en" when detection picks the wrong one.
     whisper_language: str = ""
     # VAD is ~2x faster but sometimes silently drops speech, so it is opt-in.

@@ -13,16 +13,18 @@ LLMUnavailable and degrade gracefully.
 
 from __future__ import annotations
 
+import json
 import logging
+import threading
 import time
 import warnings
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 
-from app.core.config import settings
+from app.core.config import BASE_DIR, settings
 
 logger = logging.getLogger("synapse.llm")
 
@@ -72,8 +74,9 @@ _PREFERRED_ORDER = [
     "TeachAnything",
 ]
 
-_cache_lock_free = True
+_cache_lock = threading.Lock()
 _cached_provider: tuple[str, str, float] | None = None  # (provider, model, timestamp)
+_CACHE_FILE = BASE_DIR / "data" / "ai_cache.json"
 
 
 def _openai_configured() -> bool:
@@ -171,32 +174,97 @@ def _with_timeout(fn, *args, timeout: float | None = None):
 
 def _cached_pair() -> tuple[str, str] | None:
     global _cached_provider
-    if not _cached_provider:
-        return None
-    name, model, ts = _cached_provider
-    if time.time() - ts > settings.ai_cache_seconds:
-        _cached_provider = None
-        return None
-    return name, model
+    with _cache_lock:
+        if not _cached_provider:
+            return None
+        name, model, ts = _cached_provider
+        if time.time() - ts > settings.ai_cache_seconds:
+            _cached_provider = None
+            return None
+        return name, model
 
 
 def _remember(name: str, model: str) -> None:
     global _cached_provider
-    _cached_provider = (name, model, time.time())
+    ts = time.time()
+    with _cache_lock:
+        _cached_provider = (name, model, ts)
+        try:
+            _CACHE_FILE.write_text(
+                json.dumps({"provider": name, "model": model, "timestamp": ts}),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            logger.debug("could not persist ai cache: %s", exc)
 
 
-def forget_cached_provider() -> None:
-    global _cached_provider
-    _cached_provider = None
+def _race_g4f_providers(
+    messages: list[dict],
+    temperature: float,
+    *,
+    skip: set[str] | None = None,
+) -> Answer | None:
+    """Try several g4f providers in parallel; return the first that answers."""
+    skip = skip or set()
+    candidates = [(n, m) for n, m in _g4f_candidates() if n not in skip][
+        : settings.ai_max_attempts
+    ]
+    if not candidates:
+        return None
+
+    probe_timeout = settings.ai_probe_timeout_seconds
+    workers = min(settings.ai_probe_workers, len(candidates))
+
+    def attempt(pair: tuple[str, str]) -> tuple[str, str, str] | None:
+        name, model = pair
+        try:
+            content = _with_timeout(
+                _g4f_call,
+                name,
+                model,
+                messages,
+                temperature,
+                timeout=probe_timeout,
+            )
+            if content:
+                return name, model, content
+        except Exception as exc:  # noqa: BLE001
+            logger.info("g4f %s/%s failed: %s", name, model, type(exc).__name__)
+        return None
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(attempt, pair): pair for pair in candidates}
+        try:
+            for fut in as_completed(futures):
+                hit = fut.result()
+                if hit:
+                    for pending in futures:
+                        if pending is not fut and not pending.done():
+                            pending.cancel()
+                    name, model, content = hit
+                    _remember(name, model)
+                    logger.info(
+                        "g4f race winner provider=%s model=%s chars=%s",
+                        name,
+                        model,
+                        len(content),
+                    )
+                    return Answer(content, f"g4f:{name}")
+        finally:
+            for fut in futures:
+                fut.cancel()
+    return None
 
 
 def chat(messages: list[dict], *, temperature: float = 0.35) -> Answer:
+    started = time.perf_counter()
     errors: list[str] = []
 
     if _openai_configured():
         try:
             content = _with_timeout(_openai_chat, messages, temperature)
             if content:
+                logger.info("chat via custom API in %.1fs", time.perf_counter() - started)
                 return Answer(content, f"api:{settings.ai_model}")
             errors.append("custom API: empty response")
         except Exception as exc:  # noqa: BLE001
@@ -204,11 +272,21 @@ def chat(messages: list[dict], *, temperature: float = 0.35) -> Answer:
             errors.append(f"custom API: {exc}")
 
     cached = _cached_pair()
+    skip: set[str] = set()
     if cached:
         name, model = cached
+        skip.add(name)
         try:
-            content = _g4f_call(name, model, messages, temperature)
+            content = _with_timeout(
+                _g4f_call,
+                name,
+                model,
+                messages,
+                temperature,
+                timeout=settings.ai_timeout_seconds,
+            )
             if content:
+                logger.info("chat via cached %s in %.1fs", name, time.perf_counter() - started)
                 return Answer(content, f"g4f:{name}")
             errors.append(f"{name}: empty response")
         except Exception as exc:  # noqa: BLE001
@@ -216,25 +294,41 @@ def chat(messages: list[dict], *, temperature: float = 0.35) -> Answer:
             errors.append(f"{name}: {exc}")
             forget_cached_provider()
 
-    attempts = 0
-    for name, model in _g4f_candidates():
-        if cached and name == cached[0]:
-            continue
-        if attempts >= settings.ai_max_attempts:
-            break
-        attempts += 1
-        try:
-            content = _with_timeout(_g4f_call, name, model, messages, temperature)
-            if content:
-                _remember(name, model)
-                logger.info("g4f success provider=%s model=%s chars=%s", name, model, len(content))
-                return Answer(content, f"g4f:{name}")
-            errors.append(f"{name}: empty response")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("g4f %s/%s failed: %s", name, model, exc)
-            errors.append(f"{name}: {type(exc).__name__}")
+    raced = _race_g4f_providers(messages, temperature, skip=skip)
+    if raced:
+        logger.info("chat via g4f race in %.1fs", time.perf_counter() - started)
+        return raced
 
     raise LLMUnavailable("; ".join(errors[:8]) or "no engines configured")
+
+
+def forget_cached_provider() -> None:
+    global _cached_provider
+    with _cache_lock:
+        _cached_provider = None
+        try:
+            if _CACHE_FILE.exists():
+                _CACHE_FILE.unlink()
+        except OSError:
+            pass
+
+
+def load_disk_cache() -> None:
+    """Restore last working g4f provider from disk (fast restart)."""
+    global _cached_provider
+    if not _CACHE_FILE.exists():
+        return
+    try:
+        data = json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
+        name = data.get("provider") or ""
+        model = data.get("model") or ""
+        ts = float(data.get("timestamp") or 0)
+        if name and model and time.time() - ts <= settings.ai_cache_seconds:
+            with _cache_lock:
+                _cached_provider = (name, model, ts)
+            logger.info("restored g4f cache from disk: %s/%s", name, model)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        logger.debug("ai cache load skipped: %s", exc)
 
 
 def diagnose(limit: int = 14, workers: int = 6) -> dict:
@@ -271,7 +365,7 @@ def diagnose(limit: int = 14, workers: int = 6) -> dict:
                 model,
                 [{"role": "user", "content": "Ответь одним словом: привет"}],
                 0.2,
-                timeout=25,
+                timeout=settings.ai_probe_timeout_seconds,
             )
             return {"provider": name, "model": model, "status": "ok" if content else "empty", "sample": content[:60]}
         except Exception as exc:  # noqa: BLE001
@@ -374,7 +468,7 @@ def _decode(model, audio_path: Path, *, use_vad: bool) -> tuple[str, int | None]
     # into on lecture audio; extra detection segments avoid picking a wrong
     # language from a two-word greeting at the start.
     options = {
-        "beam_size": 5,
+        "beam_size": max(1, settings.whisper_beam_size),
         "condition_on_previous_text": False,
         "language": settings.whisper_language or None,
         "language_detection_segments": 3,
@@ -424,12 +518,14 @@ def _transcribe_local(audio_path: Path) -> tuple[str, int | None]:
 
 def transcribe(audio_path: Path, filename: str) -> Transcript:
     """Transcribe audio; raises LLMUnavailable when no engine works."""
+    started = time.perf_counter()
     errors: list[str] = []
 
     if _openai_configured() and settings.ai_transcribe_model:
         try:
             text = _transcribe_via_api(audio_path, filename)
             if len(text) > 40:
+                logger.info("transcribe via API in %.1fs", time.perf_counter() - started)
                 return Transcript(text, f"api:{settings.ai_transcribe_model}")
             errors.append("api: too short")
         except Exception as exc:  # noqa: BLE001
@@ -440,6 +536,11 @@ def transcribe(audio_path: Path, filename: str) -> Transcript:
         try:
             text, duration = _transcribe_local(audio_path)
             if len(text) > 20:
+                logger.info(
+                    "transcribe via faster-whisper in %.1fs (%s chars)",
+                    time.perf_counter() - started,
+                    len(text),
+                )
                 return Transcript(text, f"faster-whisper:{settings.whisper_model}", duration)
             errors.append("local whisper: empty result")
         except Exception as exc:  # noqa: BLE001
@@ -475,3 +576,40 @@ def transcribe(audio_path: Path, filename: str) -> Transcript:
         errors.append(f"g4f multimodal: {type(exc).__name__}")
 
     raise LLMUnavailable("; ".join(errors))
+
+
+def preload_whisper() -> None:
+    """Load whisper weights into memory (call from startup thread)."""
+    if not _faster_whisper_available():
+        return
+    try:
+        _load_whisper()
+        logger.info("whisper model preloaded")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("whisper preload failed: %s", exc)
+
+
+def warm_provider_cache() -> None:
+    """Restore or discover a working g4f provider without blocking requests."""
+    if settings.ai_disable_g4f or _openai_configured():
+        return
+    load_disk_cache()
+    if _cached_pair():
+        logger.info("g4f cache warm: using %s", _cached_pair()[0])
+        return
+    try:
+        result = diagnose(limit=settings.ai_max_attempts, workers=settings.ai_probe_workers)
+        for item in result.get("providers", []):
+            if item.get("status") == "ok":
+                _remember(item["provider"], item["model"])
+                logger.info("g4f cache warm: selected %s", item["provider"])
+                return
+    except Exception as exc:  # noqa: BLE001
+        logger.info("g4f warm probe skipped: %s", exc)
+
+
+def startup_warmup() -> None:
+    """Background preload for faster first request."""
+    load_disk_cache()
+    preload_whisper()
+    warm_provider_cache()

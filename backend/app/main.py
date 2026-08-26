@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+import threading
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -24,7 +25,14 @@ from app.models import (  # noqa: E402, F401
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    threading.Thread(target=_warmup_services, daemon=True, name="synapse-warmup").start()
     yield
+
+
+def _warmup_services() -> None:
+    from app.services import llm
+
+    llm.startup_warmup()
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
