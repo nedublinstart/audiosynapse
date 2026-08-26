@@ -8,6 +8,12 @@ import { useAuth } from "@/lib/auth";
 import { SynapseMark } from "@/components/SynapseMark";
 import { FadeIn } from "@/components/FadeIn";
 
+const FEATURES = [
+  ["Аудио → конспект", "Структура вместо потока речи"],
+  ["Слайды в контексте", "Обогащение без переписывания"],
+  ["Чат по лекции", "Только ваш материал, без флуда"],
+] as const;
+
 export default function HomePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -27,7 +33,7 @@ export default function HomePage() {
       />
 
       <div className="relative mx-auto flex min-h-dvh max-w-3xl flex-col justify-center safe-px py-16 sm:py-20">
-        <FadeIn>
+        <FadeIn variant="fade-scale" duration={900}>
           <div className="mb-10 flex items-center gap-3">
             <span className="brand-mark !h-12 !w-12 !rounded-[14px]">
               <SynapseMark size={22} />
@@ -41,7 +47,7 @@ export default function HomePage() {
           </div>
         </FadeIn>
 
-        <FadeIn delay={90}>
+        <FadeIn delay={120} variant="fade-up" duration={880}>
           <p
             className="mb-10 max-w-xl text-[1.15rem] leading-relaxed sm:text-[1.3rem]"
             style={{ color: "var(--fg-muted)", fontFamily: "var(--font-display), Georgia, serif" }}
@@ -51,7 +57,7 @@ export default function HomePage() {
           </p>
         </FadeIn>
 
-        <FadeIn delay={170}>
+        <FadeIn delay={220} variant="fade-up" duration={820}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link href="/login" className="btn-primary sm:w-auto">
               Войти
@@ -63,29 +69,21 @@ export default function HomePage() {
           </div>
         </FadeIn>
 
-        <FadeIn delay={260}>
+        <FadeIn delay={320} variant="fade-in" duration={900}>
           <div
             className="mt-14 grid gap-4 border-t pt-6 text-sm sm:grid-cols-3"
             style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
           >
-            <div>
-              <div className="mb-1 font-medium" style={{ color: "var(--fg)" }}>
-                Аудио → конспект
-              </div>
-              Структура вместо потока речи
-            </div>
-            <div>
-              <div className="mb-1 font-medium" style={{ color: "var(--fg)" }}>
-                Слайды в контексте
-              </div>
-              Обогащение без переписывания
-            </div>
-            <div>
-              <div className="mb-1 font-medium" style={{ color: "var(--fg)" }}>
-                Чат по лекции
-              </div>
-              Только ваш материал, без флуда
-            </div>
+            {FEATURES.map(([title, body], i) => (
+              <FadeIn key={title} delay={380 + i * 70} variant="fade-up" duration={760}>
+                <div>
+                  <div className="mb-1 font-medium" style={{ color: "var(--fg)" }}>
+                    {title}
+                  </div>
+                  {body}
+                </div>
+              </FadeIn>
+            ))}
           </div>
         </FadeIn>
       </div>

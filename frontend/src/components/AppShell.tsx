@@ -26,6 +26,7 @@ export function AppShell({
       <header
         className="sticky top-0 z-30 border-b animate-fade-in"
         style={{
+          animationDuration: "0.55s",
           borderColor: "color-mix(in srgb, var(--border) 80%, transparent)",
           background: "color-mix(in srgb, var(--bg) 72%, transparent)",
           backdropFilter: "blur(14px) saturate(1.15)",
@@ -101,7 +102,7 @@ export function AppShell({
         ) : null}
       </header>
 
-      <main className="mx-auto max-w-5xl safe-px py-5 sm:py-8 animate-fade-up">{children}</main>
+      <main className="mx-auto max-w-5xl safe-px py-5 sm:py-8">{children}</main>
     </div>
   );
 }
