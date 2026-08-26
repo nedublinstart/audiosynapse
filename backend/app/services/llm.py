@@ -203,6 +203,7 @@ def _race_g4f_providers(
     temperature: float,
     *,
     skip: set[str] | None = None,
+    timeout: float | None = None,
 ) -> Answer | None:
     """Try several g4f providers in parallel; return the first that answers."""
     skip = skip or set()
@@ -212,7 +213,7 @@ def _race_g4f_providers(
     if not candidates:
         return None
 
-    probe_timeout = settings.ai_probe_timeout_seconds
+    probe_timeout = timeout or settings.ai_probe_timeout_seconds
     workers = min(settings.ai_probe_workers, len(candidates))
 
     def attempt(pair: tuple[str, str]) -> tuple[str, str, str] | None:
@@ -256,13 +257,14 @@ def _race_g4f_providers(
     return None
 
 
-def chat(messages: list[dict], *, temperature: float = 0.35) -> Answer:
+def chat(messages: list[dict], *, temperature: float = 0.35, timeout: float | None = None) -> Answer:
     started = time.perf_counter()
     errors: list[str] = []
+    call_timeout = timeout or settings.ai_timeout_seconds
 
     if _openai_configured():
         try:
-            content = _with_timeout(_openai_chat, messages, temperature)
+            content = _with_timeout(_openai_chat, messages, temperature, timeout=call_timeout)
             if content:
                 logger.info("chat via custom API in %.1fs", time.perf_counter() - started)
                 return Answer(content, f"api:{settings.ai_model}")
@@ -283,7 +285,7 @@ def chat(messages: list[dict], *, temperature: float = 0.35) -> Answer:
                 model,
                 messages,
                 temperature,
-                timeout=settings.ai_timeout_seconds,
+                timeout=call_timeout,
             )
             if content:
                 logger.info("chat via cached %s in %.1fs", name, time.perf_counter() - started)
@@ -294,7 +296,7 @@ def chat(messages: list[dict], *, temperature: float = 0.35) -> Answer:
             errors.append(f"{name}: {exc}")
             forget_cached_provider()
 
-    raced = _race_g4f_providers(messages, temperature, skip=skip)
+    raced = _race_g4f_providers(messages, temperature, skip=skip, timeout=call_timeout)
     if raced:
         logger.info("chat via g4f race in %.1fs", time.perf_counter() - started)
         return raced

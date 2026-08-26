@@ -28,12 +28,16 @@ class Settings(BaseSettings):
     ai_probe_workers: int = 6
     ai_max_attempts: int = 8
     ai_cache_seconds: float = 3600.0
+    ai_notes_timeout_seconds: float = 120.0
     transcribe_timeout_seconds: float = 600.0
 
-    # Local speech-to-text (faster-whisper). "base" is the default speed/quality
-    # balance; use "small" when accuracy matters more than latency.
-    whisper_model: str = "base"
-    whisper_beam_size: int = 1
+    # Notes quality: single-pass below this size; longer lectures use chunked extraction.
+    notes_single_pass_max_chars: int = 32_000
+    notes_chunk_size: int = 12_000
+
+    # Local speech-to-text — "small" for conference-grade Russian lecture accuracy.
+    whisper_model: str = "small"
+    whisper_beam_size: int = 3
     # Empty = autodetect. Set e.g. "ru" or "en" when detection picks the wrong one.
     whisper_language: str = ""
     # VAD is ~2x faster but sometimes silently drops speech, so it is opt-in.

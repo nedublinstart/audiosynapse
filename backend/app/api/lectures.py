@@ -105,9 +105,8 @@ async def _process_lecture_pipeline(lecture_id: int) -> None:
         except ai.TranscriptionUnavailable as exc:
             logger.warning("transcription unavailable for lecture %s: %s", lecture_id, exc)
             notices.append(
-                "Расшифровать аудио не удалось: доступной модели распознавания речи нет. "
-                "Включи локальное распознавание (см. FIX_WINDOWS.txt, раздел «Транскрибация») "
-                "или загрузи слайды/PDF — конспект соберётся по ним."
+                "Расшифровать аудио не удалось. Загрузите слайды/PDF — конспект соберётся по ним, "
+                "или проверьте настройки Whisper (FIX_WINDOWS.txt)."
             )
 
         if not transcript and not materials_text.strip():
@@ -131,7 +130,9 @@ async def _process_lecture_pipeline(lecture_id: int) -> None:
         )
         lecture.notes_markdown = notes
         if engine == "local":
-            notices.append("Конспект собран локально: ИИ-провайдеры недоступны.")
+            notices.append("Конспект собран локально: добавьте AI-ключ для полного качества (FIX_WINDOWS.txt).")
+        elif engine == "ai":
+            notices.append("Конспект собран с полным разбором материала.")
         lecture.enrichment_notice = " ".join(notices) or None
         lecture.status = LectureStatus.ready
         db.commit()

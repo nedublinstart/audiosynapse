@@ -23,6 +23,8 @@ import {
   exportNotesAsMarkdown,
   printNotesAsPdf,
 } from "@/components/MarkdownNotes";
+import { ProcessingStatus } from "@/components/ProcessingStatus";
+import { QuickStartGuide } from "@/components/QuickStartGuide";
 import { api, type ChatMessage, type Lecture } from "@/lib/api";
 
 function LectureInner() {
@@ -35,6 +37,7 @@ function LectureInner() {
   const [examMode, setExamMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const audioRef = useRef<HTMLInputElement>(null);
   const materialRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,15 +84,23 @@ function LectureInner() {
   }, [tab, lectureId]);
 
   useEffect(() => {
+    if (lecture?.status === "ready" && lecture.notes_markdown) {
+      setSuccess("Конспект готов! Можно читать, экспортировать или спросить в чате.");
+    }
+  }, [lecture?.status, lecture?.notes_markdown]);
+
+  useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat, tab]);
+  }, [chat, tab, busy]);
 
   async function onAudio(file: File) {
     setBusy(true);
     setError("");
+    setSuccess("");
     try {
       const updated = await api.uploadAudio(lectureId, file);
       setLecture(updated);
+      setSuccess("Аудио загружено — начали обработку. Конспект появится через минуту-две.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка загрузки");
     } finally {
@@ -100,9 +111,15 @@ function LectureInner() {
   async function onMaterial(file: File) {
     setBusy(true);
     setError("");
+    setSuccess("");
     try {
       const updated = await api.uploadMaterial(lectureId, file);
       setLecture(updated);
+      setSuccess(
+        updated.status === "processing"
+          ? "Материал добавлен — обновляем конспект…"
+          : "Материал добавлен.",
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка загрузки");
     } finally {
@@ -263,6 +280,15 @@ function LectureInner() {
         </div>
       ) : null}
 
+      {success ? (
+        <div
+          className="mb-4 animate-fade-in rounded-[10px] px-4 py-3 text-sm"
+          style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+        >
+          {success}
+        </div>
+      ) : null}
+
       {error ? (
         <p className="mb-4 text-sm" style={{ color: "var(--danger)" }}>
           {error}
@@ -304,20 +330,26 @@ function LectureInner() {
         <FadeIn key="notes">
           <article className="panel p-4 sm:p-8">
             {lecture.status === "processing" ? (
-              <div className="flex flex-col items-center gap-3 py-16 text-center text-sm" style={{ color: "var(--fg-muted)" }}>
-                <span
-                  className="processing-dot h-2 w-2 rounded-full"
-                  style={{ background: "var(--processing)" }}
-                />
-                Расшифровываем аудио и собираем конспект…
+              <ProcessingStatus />
+            ) : lecture.status === "needs_clarification" ? (
+              <div className="py-10 text-center">
+                <p className="mb-2 text-base font-medium" style={{ color: "var(--warn)" }}>
+                  Нужно уточнение
+                </p>
+                <p className="mx-auto mb-6 max-w-md text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+                  Не удалось полностью обработать лекцию. Загрузите аудио заново, добавьте PDF/DOCX
+                  или нажмите «Обработать снова».
+                </p>
+                {lecture.audio_filename ? (
+                  <button className="btn-primary sm:!w-auto" disabled={busy} onClick={() => void onReprocess()}>
+                    <RefreshCw size={16} /> Обработать снова
+                  </button>
+                ) : null}
               </div>
             ) : lecture.notes_markdown ? (
               <MarkdownNotes content={lecture.notes_markdown} />
             ) : (
-              <div className="py-16 text-center text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-                Загрузите аудио (mp3, wav, m4a, ogg, opus, aac, flac и др.),
-                <br className="sm:hidden" /> чтобы собрать конспект.
-              </div>
+              <QuickStartGuide />
             )}
             {lecture.materials.length > 0 ? (
               <div className="mt-8 border-t pt-4" style={{ borderColor: "var(--border)" }}>
@@ -374,9 +406,32 @@ function LectureInner() {
                 </div>
               ))}
               {!chat.length ? (
-                <p className="text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-                  Например: «Объясни разницу между понятиями на примерах из этой лекции».
-                </p>
+                <div className="space-y-3">
+                  <p className="text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+                    Спросите по материалам этой лекции — ответ только из вашего конспекта.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      "Главные термины простыми словами",
+                      "Что было самое важное?",
+                      "Вопросы для экзамена",
+                    ].map((hint) => (
+                      <button
+                        key={hint}
+                        type="button"
+                        className="rounded-full px-3 py-1.5 text-xs transition-colors"
+                        style={{
+                          background: "var(--bg-soft)",
+                          color: "var(--fg-muted)",
+                          border: "1px solid var(--border)",
+                        }}
+                        onClick={() => setMessage(hint)}
+                      >
+                        {hint}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ) : null}
               {busy ? (
                 <div
