@@ -60,6 +60,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
+    max_upload_bytes: int = 500 * 1024 * 1024  # 500 MB
+
 
 settings = Settings()
 settings.upload_dir.mkdir(parents=True, exist_ok=True)

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user
 from app.core.config import settings
-from app.core.database import SessionLocal, get_db
+from app.core.database import get_db
 from app.models import ChatMessage, Lecture, LectureStatus, Material, Subject, User
 from app.schemas import (
     ChatMessageOut,
@@ -22,6 +22,7 @@ from app.schemas import (
 )
 from app.services import ai
 from app.services.documents import extract_text_from_file
+from app.services.pipeline import ProcessingStage, run_lecture_pipeline, update_lecture_progress
 
 logger = logging.getLogger("synapse.lectures")
 
@@ -77,74 +78,36 @@ def _lecture_out(lecture: Lecture) -> LectureOut:
     return LectureOut.model_validate(lecture)
 
 
+def _human_size(num_bytes: int) -> str:
+    if num_bytes < 1024 * 1024:
+        return f"{num_bytes / 1024:.0f} КБ"
+    return f"{num_bytes / (1024 * 1024):.1f} МБ"
+
+
+async def _save_upload_stream(
+    upload: UploadFile,
+    dest: Path,
+    *,
+    max_bytes: int,
+) -> int:
+    """Stream upload to disk with size guard; returns bytes written."""
+    total = 0
+    chunk_size = 1024 * 1024
+    with dest.open("wb") as out:
+        while chunk := await upload.read(chunk_size):
+            total += len(chunk)
+            if total > max_bytes:
+                dest.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Файл слишком большой. Максимум {_human_size(max_bytes)}.",
+                )
+            out.write(chunk)
+    return total
+
+
 async def _process_lecture_pipeline(lecture_id: int) -> None:
-    db = SessionLocal()
-    try:
-        lecture = (
-            db.query(Lecture)
-            .options(joinedload(Lecture.materials), joinedload(Lecture.subject))
-            .filter(Lecture.id == lecture_id)
-            .one()
-        )
-        lecture.status = LectureStatus.processing
-        db.commit()
-
-        materials_text = _materials_text(lecture)
-        notices: list[str] = []
-        transcript = ""
-
-        try:
-            result = await ai.transcribe_audio(
-                Path(lecture.audio_path), lecture.audio_filename or "audio.mp3"
-            )
-            transcript = result.text
-            lecture.transcript = transcript
-            if result.duration_seconds:
-                lecture.duration_seconds = result.duration_seconds
-            notices.append(f"Транскрибация: {result.engine}.")
-        except ai.TranscriptionUnavailable as exc:
-            logger.warning("transcription unavailable for lecture %s: %s", lecture_id, exc)
-            notices.append(
-                "Расшифровать аудио не удалось. Загрузите слайды/PDF — конспект соберётся по ним, "
-                "или проверьте настройки Whisper (FIX_WINDOWS.txt)."
-            )
-
-        if not transcript and not materials_text.strip():
-            lecture.status = LectureStatus.needs_clarification
-            lecture.enrichment_notice = " ".join(notices)
-            db.commit()
-            return
-
-        date_str = (
-            lecture.lecture_date.strftime("%d.%m.%Y")
-            if lecture.lecture_date
-            else datetime.now(timezone.utc).strftime("%d.%m.%Y")
-        )
-        notes, engine = await ai.generate_notes(
-            subject_name=lecture.subject.name,
-            title=lecture.topic or lecture.title,
-            lecture_date=date_str,
-            duration_seconds=lecture.duration_seconds,
-            transcript=transcript,
-            materials_text=materials_text,
-        )
-        lecture.notes_markdown = notes
-        if engine == "local":
-            notices.append("Конспект собран локально: добавьте AI-ключ для полного качества (FIX_WINDOWS.txt).")
-        elif engine == "ai":
-            notices.append("Конспект собран с полным разбором материала.")
-        lecture.enrichment_notice = " ".join(notices) or None
-        lecture.status = LectureStatus.ready
-        db.commit()
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("lecture pipeline failed for %s", lecture_id)
-        lecture = db.get(Lecture, lecture_id)
-        if lecture:
-            lecture.status = LectureStatus.needs_clarification
-            lecture.enrichment_notice = f"Ошибка обработки: {type(exc).__name__}: {exc}"
-            db.commit()
-    finally:
-        db.close()
+    await run_lecture_pipeline(lecture_id)
 
 
 @router.post("/subjects/{subject_id}/lectures", response_model=LectureOut)
@@ -238,20 +201,61 @@ async def upload_audio(
     lecture = _get_owned_lecture(db, user, lecture_id)
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_AUDIO:
-        raise HTTPException(status_code=400, detail=f"Unsupported audio format. Allowed: {sorted(ALLOWED_AUDIO)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Формат не поддерживается. Допустимо: {', '.join(sorted(ALLOWED_AUDIO))}",
+        )
 
     dest_dir = settings.upload_dir / f"lecture_{lecture.id}"
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / f"audio_{uuid.uuid4().hex}{suffix}"
-    # Stream in chunks: lecture recordings can be hundreds of megabytes.
-    with dest.open("wb") as out:
-        while chunk := await file.read(1024 * 1024):
-            out.write(chunk)
+
+    lecture.status = LectureStatus.processing
+    update_lecture_progress(
+        db,
+        lecture,
+        stage=ProcessingStage.uploading,
+        progress=1,
+        message="Принимаем файл…",
+    )
+
+    try:
+        written = await _save_upload_stream(file, dest, max_bytes=settings.max_upload_bytes)
+    except HTTPException:
+        lecture.status = LectureStatus.awaiting_audio
+        lecture.processing_stage = None
+        lecture.processing_progress = 0
+        lecture.processing_message = None
+        db.commit()
+        raise
+
+    if written < 1024:
+        dest.unlink(missing_ok=True)
+        lecture.status = LectureStatus.awaiting_audio
+        lecture.processing_stage = None
+        lecture.processing_progress = 0
+        lecture.processing_message = None
+        db.commit()
+        raise HTTPException(status_code=400, detail="Файл пустой или повреждён (меньше 1 КБ).")
+
+    if lecture.audio_path and lecture.audio_path != str(dest):
+        try:
+            Path(lecture.audio_path).unlink(missing_ok=True)
+        except OSError:
+            pass
 
     lecture.audio_path = str(dest)
     lecture.audio_filename = file.filename
-    lecture.status = LectureStatus.processing
-    db.commit()
+    lecture.audio_size_bytes = written
+    lecture.transcript = None
+    lecture.notes_markdown = None
+    update_lecture_progress(
+        db,
+        lecture,
+        stage=ProcessingStage.queued,
+        progress=100,
+        message=f"Загружено {_human_size(written)} — ставим в очередь…",
+    )
 
     background_tasks.add_task(_process_lecture_pipeline, lecture.id)
     lecture = _get_owned_lecture(db, user, lecture_id)
@@ -292,7 +296,13 @@ async def upload_material(
     lecture = _get_owned_lecture(db, user, lecture_id)
     if lecture.notes_markdown:
         lecture.status = LectureStatus.processing
-        db.commit()
+        update_lecture_progress(
+            db,
+            lecture,
+            stage=ProcessingStage.generating_notes,
+            progress=70,
+            message="Обновляем конспект с новыми материалами…",
+        )
         try:
             notes, notice = await ai.enrich_notes(
                 existing_notes=lecture.notes_markdown,
@@ -303,9 +313,14 @@ async def upload_material(
             lecture.notes_markdown = notes
             lecture.enrichment_notice = notice
             lecture.status = LectureStatus.ready
+            lecture.processing_stage = ProcessingStage.done.value
+            lecture.processing_progress = 100
+            lecture.processing_message = "Конспект обновлён"
         except Exception as exc:  # noqa: BLE001
             lecture.status = LectureStatus.needs_clarification
             lecture.enrichment_notice = f"Ошибка обогащения: {exc}"
+            lecture.processing_stage = None
+            lecture.processing_progress = 0
         db.commit()
 
     lecture = _get_owned_lecture(db, user, lecture_id)
@@ -323,7 +338,15 @@ async def reprocess_lecture(
     if not lecture.audio_path:
         raise HTTPException(status_code=400, detail="No audio uploaded")
     lecture.status = LectureStatus.processing
-    db.commit()
+    lecture.transcript = None
+    lecture.notes_markdown = None
+    update_lecture_progress(
+        db,
+        lecture,
+        stage=ProcessingStage.queued,
+        progress=5,
+        message="Перезапуск обработки…",
+    )
     background_tasks.add_task(_process_lecture_pipeline, lecture.id)
     return _lecture_out(lecture)
 

@@ -296,6 +296,15 @@ html.dark body::after {
     border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   }
 
+  .progress-fill {
+    box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+
+  .upload-zone:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    outline-offset: 2px;
+  }
+
   html.dark .panel-interactive:hover {
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.04),

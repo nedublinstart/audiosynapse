@@ -11,6 +11,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 from app.api import auth, lectures, subjects  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.core.database import Base, engine  # noqa: E402
+from app.core.migrations import run_migrations  # noqa: E402
 from app.models import (  # noqa: E402, F401
     ChatMessage,
     Lecture,
@@ -25,6 +26,7 @@ from app.models import (  # noqa: E402, F401
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    run_migrations()
     threading.Thread(target=_warmup_services, daemon=True, name="synapse-warmup").start()
     yield
 

@@ -112,6 +112,10 @@ class LectureOut(ORMModel):
     lecture_date: datetime | None
     status: LectureStatus
     audio_filename: str | None
+    audio_size_bytes: int | None = None
+    processing_stage: str | None = None
+    processing_progress: int = 0
+    processing_message: str | None = None
     notes_markdown: str | None
     enrichment_notice: str | None
     duration_seconds: int | None

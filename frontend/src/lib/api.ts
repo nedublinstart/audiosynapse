@@ -55,6 +55,10 @@ export type Lecture = {
   lecture_date: string | null;
   status: LectureStatus;
   audio_filename: string | null;
+  audio_size_bytes: number | null;
+  processing_stage: string | null;
+  processing_progress: number;
+  processing_message: string | null;
   notes_markdown: string | null;
   enrichment_notice: string | null;
   duration_seconds: number | null;
@@ -126,6 +130,48 @@ async function request<T>(
   return res.json();
 }
 
+function uploadForm<T>(
+  path: string,
+  form: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_URL}${path}`);
+    const token = getToken();
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as T);
+        } catch {
+          reject(new ApiError(xhr.status, "Invalid response"));
+        }
+        return;
+      }
+      let detail = xhr.statusText;
+      try {
+        const data = JSON.parse(xhr.responseText);
+        detail = data.detail || detail;
+      } catch {
+        /* ignore */
+      }
+      reject(new ApiError(xhr.status, typeof detail === "string" ? detail : "Upload failed"));
+    });
+
+    xhr.addEventListener("error", () => reject(new ApiError(0, "Сеть недоступна — проверьте соединение")));
+    xhr.addEventListener("abort", () => reject(new ApiError(0, "Загрузка отменена")));
+    xhr.send(form);
+  });
+}
+
 export const api = {
   health: () => request<{ status: string; gemini_configured: boolean }>("/api/health"),
   register: (body: { email: string; full_name: string; password: string }) =>
@@ -166,13 +212,14 @@ export const api = {
   getLecture: (id: number) => request<Lecture>(`/api/lectures/${id}`),
   deleteLecture: (id: number) =>
     request<void>(`/api/lectures/${id}`, { method: "DELETE" }),
-  uploadAudio: async (lectureId: number, file: File) => {
+  uploadAudio: async (
+    lectureId: number,
+    file: File,
+    onProgress?: (percent: number) => void,
+  ) => {
     const form = new FormData();
     form.append("file", file);
-    return request<Lecture>(`/api/lectures/${lectureId}/audio`, {
-      method: "POST",
-      body: form,
-    }, true);
+    return uploadForm<Lecture>(`/api/lectures/${lectureId}/audio`, form, onProgress);
   },
   uploadMaterial: async (lectureId: number, file: File) => {
     const form = new FormData();

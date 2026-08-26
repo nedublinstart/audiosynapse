@@ -481,13 +481,21 @@ def _offline_chat_reply(
     )
 
 
-async def transcribe_audio(audio_path: Path, filename: str) -> TranscriptResult:
+async def transcribe_audio(
+    audio_path: Path,
+    filename: str,
+    *,
+    on_progress=None,
+) -> TranscriptResult:
     """Transcribe lecture audio; raises TranscriptionUnavailable if no engine works."""
     import asyncio
 
     loop = asyncio.get_running_loop()
     try:
-        result = await loop.run_in_executor(None, lambda: llm.transcribe(audio_path, filename))
+        result = await loop.run_in_executor(
+            None,
+            lambda: llm.transcribe(audio_path, filename, on_progress=on_progress),
+        )
     except LLMUnavailable as exc:
         raise TranscriptionUnavailable(str(exc)) from exc
 

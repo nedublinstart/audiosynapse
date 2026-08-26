@@ -465,7 +465,13 @@ def _load_whisper():
     return _whisper_model
 
 
-def _decode(model, audio_path: Path, *, use_vad: bool) -> tuple[str, int | None]:
+def _decode(
+    model,
+    audio_path: Path,
+    *,
+    use_vad: bool,
+    on_progress=None,
+) -> tuple[str, int | None, float]:
     # condition_on_previous_text=False stops the repetition loops Whisper falls
     # into on lecture audio; extra detection segments avoid picking a wrong
     # language from a two-word greeting at the start.
@@ -485,32 +491,49 @@ def _decode(model, audio_path: Path, *, use_vad: bool) -> tuple[str, int | None]
     segments, info = model.transcribe(str(audio_path), **options)
     parts = []
     covered = 0.0
+    duration = float(getattr(info, "duration", 0) or 0) or None
+    duration_int = int(duration) if duration else None
     for seg in segments:
         stamp = time.strftime("%M:%S", time.gmtime(max(0, seg.start)))
         parts.append(f"[{stamp}] {seg.text.strip()}")
         covered += max(0.0, seg.end - seg.start)
-    duration = int(getattr(info, "duration", 0) or 0) or None
+        if on_progress and duration and duration > 0:
+            try:
+                on_progress(
+                    min(0.99, covered / duration),
+                    f"Расшифровка… {int(covered // 60):02d}:{int(covered % 60):02d} / "
+                    f"{int(duration // 60):02d}:{int(duration % 60):02d}",
+                )
+            except Exception:  # noqa: BLE001
+                pass
     coverage = covered / duration if duration else 1.0
-    return "\n".join(parts).strip(), duration, coverage
+    if on_progress:
+        try:
+            on_progress(1.0, "Расшифровка завершена")
+        except Exception:  # noqa: BLE001
+            pass
+    return "\n".join(parts).strip(), duration_int, coverage
 
 
-def _transcribe_local(audio_path: Path) -> tuple[str, int | None]:
+def _transcribe_local(audio_path: Path, on_progress=None) -> tuple[str, int | None]:
     model = _load_whisper()
     use_vad = settings.whisper_vad
     try:
-        text, duration, coverage = _decode(model, audio_path, use_vad=use_vad)
+        text, duration, coverage = _decode(model, audio_path, use_vad=use_vad, on_progress=on_progress)
     except Exception as exc:  # noqa: BLE001
         if not use_vad:
             raise
         logger.info("whisper with VAD failed (%s); retrying without VAD", exc)
-        text, duration, coverage = _decode(model, audio_path, use_vad=False)
+        text, duration, coverage = _decode(model, audio_path, use_vad=False, on_progress=on_progress)
         return text, duration
 
     # Low coverage means whole passages were skipped (VAD or language misdetect).
     if use_vad and coverage < 0.6:
         logger.info("transcript covers only %.0f%% of audio; retrying without VAD", coverage * 100)
         try:
-            alt_text, alt_duration, alt_coverage = _decode(model, audio_path, use_vad=False)
+            alt_text, alt_duration, alt_coverage = _decode(
+                model, audio_path, use_vad=False, on_progress=on_progress
+            )
             if alt_coverage > coverage or len(alt_text) > len(text):
                 return alt_text, alt_duration or duration
         except Exception as exc:  # noqa: BLE001
@@ -518,7 +541,12 @@ def _transcribe_local(audio_path: Path) -> tuple[str, int | None]:
     return text, duration
 
 
-def transcribe(audio_path: Path, filename: str) -> Transcript:
+def transcribe(
+    audio_path: Path,
+    filename: str,
+    *,
+    on_progress=None,
+) -> Transcript:
     """Transcribe audio; raises LLMUnavailable when no engine works."""
     started = time.perf_counter()
     errors: list[str] = []
@@ -536,7 +564,7 @@ def transcribe(audio_path: Path, filename: str) -> Transcript:
 
     if _faster_whisper_available():
         try:
-            text, duration = _transcribe_local(audio_path)
+            text, duration = _transcribe_local(audio_path, on_progress=on_progress)
             if len(text) > 20:
                 logger.info(
                     "transcribe via faster-whisper in %.1fs (%s chars)",

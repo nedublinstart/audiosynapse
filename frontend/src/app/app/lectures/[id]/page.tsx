@@ -23,6 +23,7 @@ import {
   exportNotesAsMarkdown,
   printNotesAsPdf,
 } from "@/components/MarkdownNotes";
+import { AudioUploadZone } from "@/components/AudioUploadZone";
 import { ProcessingStatus } from "@/components/ProcessingStatus";
 import { QuickStartGuide } from "@/components/QuickStartGuide";
 import { api, type ChatMessage, type Lecture } from "@/lib/api";
@@ -38,7 +39,7 @@ function LectureInner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const audioRef = useRef<HTMLInputElement>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const materialRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -65,13 +66,11 @@ function LectureInner() {
       if (pollRef.current) clearTimeout(pollRef.current);
       return;
     }
-    const started = Date.now();
     const tick = () => {
       void load();
-      const delay = Date.now() - started < 30_000 ? 1000 : 3000;
-      pollRef.current = setTimeout(tick, delay);
+      pollRef.current = setTimeout(tick, 800);
     };
-    pollRef.current = setTimeout(tick, 1000);
+    pollRef.current = setTimeout(tick, 400);
     return () => {
       if (pollRef.current) clearTimeout(pollRef.current);
     };
@@ -97,14 +96,17 @@ function LectureInner() {
     setBusy(true);
     setError("");
     setSuccess("");
+    setUploadProgress(0);
     try {
-      const updated = await api.uploadAudio(lectureId, file);
+      const updated = await api.uploadAudio(lectureId, file, (pct) => setUploadProgress(pct));
+      setUploadProgress(100);
       setLecture(updated);
-      setSuccess("Аудио загружено — начали обработку. Конспект появится через минуту-две.");
     } catch (err) {
+      setUploadProgress(null);
       setError(err instanceof Error ? err.message : "Ошибка загрузки");
     } finally {
       setBusy(false);
+      window.setTimeout(() => setUploadProgress(null), 600);
     }
   }
 
@@ -220,53 +222,42 @@ function LectureInner() {
             ) : null}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-            <input
-              ref={audioRef}
-              type="file"
-              accept=".mp3,.wav,.m4a,.ogg,.opus,.aac,.flac,.wma,.amr,.mp4,.webm,audio/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onAudio(f);
-              }}
+          <div className="flex flex-col gap-3">
+            <AudioUploadZone
+              disabled={lecture.status === "processing" && uploadProgress == null}
+              busy={busy}
+              uploadProgress={uploadProgress}
+              currentFilename={lecture.audio_filename}
+              onFile={(f) => void onAudio(f)}
             />
-            <input
-              ref={materialRef}
-              type="file"
-              accept=".pdf,.pptx,.docx,.png,.jpg,.jpeg,.webp,.txt,.md"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onMaterial(f);
-              }}
-            />
-            <button
-              className="btn-primary col-span-2 sm:col-span-1 sm:!w-auto"
-              disabled={busy}
-              onClick={() => audioRef.current?.click()}
-            >
-              <Mic size={16} />
-              <span className="truncate">
-                {lecture.audio_filename ? "Заменить аудио" : "Загрузить аудио"}
-              </span>
-            </button>
-            <button
-              className="btn-outline col-span-2 sm:!w-auto"
-              disabled={busy}
-              onClick={() => materialRef.current?.click()}
-            >
-              <FileUp size={16} /> Материал
-            </button>
-            {lecture.audio_filename && lecture.status !== "processing" ? (
+            <div className="flex flex-wrap gap-2">
+              <input
+                ref={materialRef}
+                type="file"
+                accept=".pdf,.pptx,.docx,.png,.jpg,.jpeg,.webp,.txt,.md"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void onMaterial(f);
+                }}
+              />
               <button
-                className="btn-outline col-span-2 sm:!w-auto"
-                disabled={busy}
-                onClick={() => void onReprocess()}
+                className="btn-outline sm:!w-auto"
+                disabled={busy || lecture.status === "processing"}
+                onClick={() => materialRef.current?.click()}
               >
-                <RefreshCw size={16} /> Обработать снова
+                <FileUp size={16} /> Добавить материал (PDF, слайды)
               </button>
-            ) : null}
+              {lecture.audio_filename && lecture.status !== "processing" ? (
+                <button
+                  className="btn-outline sm:!w-auto"
+                  disabled={busy}
+                  onClick={() => void onReprocess()}
+                >
+                  <RefreshCw size={16} /> Обработать снова
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
       </FadeIn>
@@ -330,7 +321,12 @@ function LectureInner() {
         <FadeIn key="notes">
           <article className="panel p-4 sm:p-8">
             {lecture.status === "processing" ? (
-              <ProcessingStatus />
+              <ProcessingStatus
+                stage={lecture.processing_stage}
+                progress={lecture.processing_progress}
+                message={lecture.processing_message}
+                audioSizeBytes={lecture.audio_size_bytes}
+              />
             ) : lecture.status === "needs_clarification" ? (
               <div className="py-10 text-center">
                 <p className="mb-2 text-base font-medium" style={{ color: "var(--warn)" }}>
