@@ -7,6 +7,7 @@ import { ArrowUpRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { SynapseMark } from "@/components/SynapseMark";
 import { FadeIn } from "@/components/FadeIn";
+import { PageLoader } from "@/components/PageLoader";
 
 export default function HomePage() {
   const { user, loading } = useAuth();
@@ -17,15 +18,7 @@ export default function HomePage() {
   }, [loading, user, router]);
 
   if (loading) {
-    return (
-      <div className="relative min-h-dvh overflow-hidden">
-        <div className="relative mx-auto flex min-h-dvh max-w-xl flex-col justify-center safe-px py-16">
-          <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-            Загрузка…
-          </p>
-        </div>
-      </div>
-    );
+    return <PageLoader label="Synapse" />;
   }
 
   return (

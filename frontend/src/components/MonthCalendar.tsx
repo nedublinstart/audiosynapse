@@ -17,6 +17,7 @@ import {
 import { ru } from "date-fns/locale";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { CalendarLecture } from "@/lib/api";
+import { StatePlaceholder } from "@/components/StatePlaceholder";
 
 const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
@@ -25,6 +26,8 @@ type Props = {
   month: Date;
   onMonthChange: (next: Date) => void;
   loading?: boolean;
+  loadError?: boolean;
+  onRetry?: () => void;
 };
 
 function dayKey(d: Date) {
@@ -41,7 +44,7 @@ function lectureCountLabel(count: number) {
 }
 
 /** Square month calendar — lectures as colored dots, no clock times. */
-export function MonthCalendar({ lectures, month, onMonthChange, loading }: Props) {
+export function MonthCalendar({ lectures, month, onMonthChange, loading, loadError, onRetry }: Props) {
   const [selected, setSelected] = useState<Date | null>(new Date());
 
   const byDay = useMemo(() => {
@@ -136,7 +139,11 @@ export function MonthCalendar({ lectures, month, onMonthChange, loading }: Props
         })}
       </div>
 
-      {loading ? (
+      {loadError ? (
+        <div className="mt-3">
+          <StatePlaceholder compact variant="calendar-offline" onRetry={onRetry} />
+        </div>
+      ) : loading ? (
         <div className="mt-3 space-y-2">
           <div className="skeleton h-10 w-full rounded-[10px]" />
           <div className="skeleton h-10 w-2/3 rounded-[10px]" />
@@ -152,7 +159,7 @@ export function MonthCalendar({ lectures, month, onMonthChange, loading }: Props
                 <li key={lecture.id}>
                   <Link
                     href={`/app/lectures/${lecture.id}`}
-                    className="flex items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-sm transition-colors hover:bg-[var(--bg-soft)]"
+                    className="pressable flex items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-sm transition-colors hover:bg-[var(--bg-soft)]"
                   >
                     <span
                       className="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -170,9 +177,7 @@ export function MonthCalendar({ lectures, month, onMonthChange, loading }: Props
               ))}
             </ul>
           ) : (
-            <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-              В этот день лекций нет
-            </p>
+            <StatePlaceholder inline compact variant="empty-calendar-day" />
           )}
         </div>
       ) : null}

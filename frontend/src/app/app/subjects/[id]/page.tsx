@@ -3,14 +3,16 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState, type CSSProperties } from "react";
-import { ArrowLeft, BookOpen, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FadeIn } from "@/components/FadeIn";
 import { StatusBadge } from "@/components/StatusBadge";
-import { api, isNetworkError, networkErrorVariant, type Lecture, type Subject } from "@/lib/api";
-import { NetworkStub } from "@/components/NetworkStub";
-import { TextReveal } from "@/components/TextReveal";
+import { ErrorPanel, InlineAlert } from "@/components/InlineAlert";
+import { SkeletonList } from "@/components/SkeletonList";
+import { StatePlaceholder } from "@/components/StatePlaceholder";
+import { api, type Lecture, type Subject } from "@/lib/api";
+import { errorMessage, placeholderForError } from "@/lib/placeholders";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -41,13 +43,14 @@ function SubjectInner() {
     ]);
     setSubject(s);
     setLectures(l);
+    setLoadError(null);
     setLoaded(true);
   }, [invalidId, subjectId]);
 
   useEffect(() => {
     void load().catch((e) => {
       setLoadError(e);
-      setError(e instanceof Error ? e.message : "Ошибка загрузки");
+      setError(errorMessage(e, "Ошибка загрузки"));
       setLoaded(true);
     });
   }, [load]);
@@ -57,7 +60,6 @@ function SubjectInner() {
     setBusy(true);
     setError("");
     try {
-      // Date is set on the server as today (date-only) — no clock time from the user.
       const lecture = await api.createLecture(subjectId, {
         title: title.trim(),
         topic: topic.trim() || undefined,
@@ -67,7 +69,8 @@ function SubjectInner() {
       setShowForm(false);
       router.push(`/app/lectures/${lecture.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
+      setLoadError(err);
+      setError(errorMessage(err, "Ошибка"));
       setBusy(false);
     }
   }
@@ -80,9 +83,29 @@ function SubjectInner() {
       await api.deleteSubject(subjectId);
       router.push("/app");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось удалить предмет");
+      setLoadError(err);
+      setError(errorMessage(err, "Не удалось удалить предмет"));
       setBusy(false);
     }
+  }
+
+  if (loaded && loadError && !subject) {
+    const variant = invalidId ? "not-found" : placeholderForError(loadError);
+    return (
+      <AppShell title="Предмет">
+        <ErrorPanel
+          err={loadError}
+          error={invalidId ? "Предмет не найден" : error}
+          onRetry={invalidId ? undefined : () => {
+            setLoadError(null);
+            setError("");
+            setLoaded(false);
+            void load();
+          }}
+          compact={variant === "not-found"}
+        />
+      </AppShell>
+    );
   }
 
   return (
@@ -157,35 +180,21 @@ function SubjectInner() {
         </FadeIn>
       ) : null}
 
-      {loadError && isNetworkError(loadError) ? (
-        <div className="mb-4">
-          <NetworkStub
-            variant={networkErrorVariant(loadError)}
-            compact
-            onRetry={() => {
-              setLoadError(null);
-              setError("");
-              void load();
-            }}
-          />
-        </div>
-      ) : error ? (
-        <TextReveal contentKey={error}>
-          <p className="mb-4 text-sm" style={{ color: "var(--danger)" }}>
-            {error}
-          </p>
-        </TextReveal>
+      {error && subject ? (
+        <InlineAlert
+          error={error}
+          err={loadError ?? undefined}
+          networkStub
+          onRetry={() => {
+            setLoadError(null);
+            setError("");
+            void load();
+          }}
+        />
       ) : null}
 
       {!loaded ? (
-        <div className="space-y-2.5">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="panel h-20 p-4">
-              <div className="skeleton mb-2 h-4 w-1/3" />
-              <div className="skeleton h-3 w-2/3" />
-            </div>
-          ))}
-        </div>
+        <SkeletonList rows={4} />
       ) : (
         <div className="space-y-2.5">
           {lectures.map((lecture) => (
@@ -213,21 +222,16 @@ function SubjectInner() {
           ))}
           {!lectures.length ? (
             <FadeIn>
-              <div className="panel flex flex-col items-center px-6 py-12 text-center">
-                <div
-                  className="mb-4 flex h-12 w-12 items-center justify-center rounded-[14px]"
-                  style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-                >
-                  <BookOpen size={22} />
-                </div>
-                <p className="mb-1 font-medium">Лекций пока нет</p>
-                <p className="mb-5 max-w-sm text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-                  Создайте карточку лекции и загрузите аудио — Synapse соберёт развёрнутый конспект.
-                </p>
-                <button type="button" className="btn-primary sm:!w-auto" onClick={() => setShowForm(true)}>
-                  <Plus size={16} /> Новая лекция
-                </button>
-              </div>
+              <StatePlaceholder
+                variant="empty-lectures"
+                actions={[
+                  {
+                    label: "Новая лекция",
+                    onClick: () => setShowForm(true),
+                    primary: true,
+                  },
+                ]}
+              />
             </FadeIn>
           ) : null}
         </div>

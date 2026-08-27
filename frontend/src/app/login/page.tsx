@@ -6,7 +6,8 @@ import { FormEvent, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { SynapseMark } from "@/components/SynapseMark";
 import { FadeIn } from "@/components/FadeIn";
-import { TextReveal } from "@/components/TextReveal";
+import { InlineAlert } from "@/components/InlineAlert";
+import { isNetworkError } from "@/lib/api";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -14,20 +15,27 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [lastError, setLastError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function submitLogin() {
     setBusy(true);
     setError("");
+    setLastError(null);
     try {
       await login(email, password);
       router.push("/app");
     } catch (err) {
+      setLastError(err);
       setError(err instanceof Error ? err.message : "Ошибка входа");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    await submitLogin();
   }
 
   return (
@@ -72,11 +80,14 @@ export default function LoginPage() {
               />
             </div>
             {error ? (
-              <TextReveal contentKey={error}>
-                <p className="animate-fade-in text-sm" style={{ color: "var(--danger)" }}>
-                  {error}
-                </p>
-              </TextReveal>
+              <InlineAlert
+                error={error}
+                err={lastError ?? undefined}
+                networkStub
+                onRetry={
+                  lastError && isNetworkError(lastError) ? () => void submitLogin() : undefined
+                }
+              />
             ) : null}
             <button className="btn-primary w-full" disabled={busy}>
               {busy ? "Входим…" : "Войти"}

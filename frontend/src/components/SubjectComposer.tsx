@@ -2,7 +2,9 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
-import { api, type Subject } from "@/lib/api";
+import { api, isNetworkError, type Subject } from "@/lib/api";
+import { InlineAlert } from "@/components/InlineAlert";
+import { errorMessage } from "@/lib/placeholders";
 
 const COLORS = [
   "#1f7a75",
@@ -27,14 +29,14 @@ export function SubjectComposer({ onCancel, onCreated }: Props) {
   const [color, setColor] = useState(COLORS[0]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [lastError, setLastError] = useState<unknown>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     nameRef.current?.focus();
   }, []);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function submitCreate() {
     const trimmed = name.trim();
     if (!trimmed) {
       setError("Введите название предмета");
@@ -43,6 +45,7 @@ export function SubjectComposer({ onCancel, onCreated }: Props) {
     }
     setBusy(true);
     setError("");
+    setLastError(null);
     try {
       const subject = await api.createSubject({
         name: trimmed,
@@ -52,10 +55,16 @@ export function SubjectComposer({ onCancel, onCreated }: Props) {
       });
       onCreated(subject);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось создать предмет");
+      setLastError(err);
+      setError(errorMessage(err, "Не удалось создать предмет"));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    await submitCreate();
   }
 
   return (
@@ -119,9 +128,14 @@ export function SubjectComposer({ onCancel, onCreated }: Props) {
           </div>
         </div>
         {error ? (
-          <p className="text-sm" style={{ color: "var(--danger)" }}>
-            {error}
-          </p>
+          <InlineAlert
+            error={error}
+            err={lastError ?? undefined}
+            networkStub
+            onRetry={
+              lastError && isNetworkError(lastError) ? () => void submitCreate() : undefined
+            }
+          />
         ) : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
           <button type="button" className="btn-ghost sm:!w-auto" onClick={onCancel} disabled={busy}>

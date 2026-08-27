@@ -26,9 +26,13 @@ import {
 import { AudioUploadZone } from "@/components/AudioUploadZone";
 import { ProcessingStatus } from "@/components/ProcessingStatus";
 import { QuickStartGuide } from "@/components/QuickStartGuide";
-import { NetworkStub } from "@/components/NetworkStub";
+import { ChatEmptyState } from "@/components/ChatEmptyState";
+import { ErrorPanel, InlineAlert } from "@/components/InlineAlert";
+import { SkeletonLecturePage } from "@/components/SkeletonList";
+import { StatePlaceholder } from "@/components/StatePlaceholder";
 import { TextReveal } from "@/components/TextReveal";
-import { api, isNetworkError, networkErrorVariant, type ChatMessage, type Lecture } from "@/lib/api";
+import { api, isNetworkError, type ChatMessage, type Lecture } from "@/lib/api";
+import { placeholderForError } from "@/lib/placeholders";
 
 function LectureInner() {
   const params = useParams();
@@ -41,6 +45,7 @@ function LectureInner() {
   const [examMode, setExamMode] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [lastError, setLastError] = useState<unknown>(null);
   const [success, setSuccess] = useState("");
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const materialRef = useRef<HTMLInputElement>(null);
@@ -149,6 +154,7 @@ function LectureInner() {
   async function onAudio(file: File) {
     setBusy(true);
     setError("");
+    setLastError(null);
     setSuccess("");
     setUploadProgress(0);
     try {
@@ -157,6 +163,7 @@ function LectureInner() {
       setLecture(updated);
     } catch (err) {
       setUploadProgress(null);
+      setLastError(err);
       setError(err instanceof Error ? err.message : "Ошибка загрузки");
     } finally {
       setBusy(false);
@@ -167,6 +174,7 @@ function LectureInner() {
   async function onMaterial(file: File) {
     setBusy(true);
     setError("");
+    setLastError(null);
     setSuccess("");
     try {
       const updated = await api.uploadMaterial(lectureId, file);
@@ -177,6 +185,7 @@ function LectureInner() {
           : "Материал добавлен.",
       );
     } catch (err) {
+      setLastError(err);
       setError(err instanceof Error ? err.message : "Ошибка загрузки");
     } finally {
       setBusy(false);
@@ -186,10 +195,14 @@ function LectureInner() {
   async function onReprocess() {
     setBusy(true);
     setError("");
+    setLastError(null);
     try {
       const updated = await api.reprocessLecture(lectureId);
       setLecture(updated);
+      setProcessingStuck(false);
+      processingSinceRef.current = Date.now();
     } catch (err) {
+      setLastError(err);
       setError(err instanceof Error ? err.message : "Не удалось перезапустить обработку");
     } finally {
       setBusy(false);
@@ -231,16 +244,20 @@ function LectureInner() {
 
   if (!lecture) {
     if (loadFailed) {
+      const variant = invalidId ? "not-found" : placeholderForError(loadFailed);
       return (
         <AppShell>
-          <NetworkStub
-            variant={isNetworkError(loadFailed) ? networkErrorVariant(loadFailed) : "empty"}
-            message={
-              isNetworkError(loadFailed)
-                ? undefined
-                : error || (invalidId ? "Лекция не найдена" : "Не удалось загрузить лекцию")
+          <ErrorPanel
+            err={loadFailed}
+            error={
+              invalidId
+                ? "Лекция не найдена"
+                : isNetworkError(loadFailed)
+                  ? undefined
+                  : error || "Не удалось загрузить лекцию"
             }
             onRetry={invalidId ? undefined : retryLoad}
+            compact={variant === "not-found"}
           />
         </AppShell>
       );
@@ -248,13 +265,7 @@ function LectureInner() {
 
     return (
       <AppShell>
-        <div className="space-y-3 animate-fade-in">
-          <div className="skeleton h-8 w-48" />
-          <div className="skeleton h-40 w-full" />
-          <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-            Загрузка лекции…
-          </p>
-        </div>
+        <SkeletonLecturePage />
       </AppShell>
     );
   }
@@ -307,7 +318,10 @@ function LectureInner() {
               uploadProgress={uploadProgress}
               currentFilename={lecture.audio_filename}
               onFile={(f) => void onAudio(f)}
-              onError={(msg) => setError(msg)}
+              onError={(msg) => {
+                setError(msg);
+                setLastError(new Error(msg));
+              }}
             />
             <div className="flex flex-wrap gap-2">
               <input
@@ -364,11 +378,20 @@ function LectureInner() {
       ) : null}
 
       {error ? (
-        <TextReveal contentKey={error}>
-          <p className="mb-4 text-sm" style={{ color: "var(--danger)" }}>
-            {error}
-          </p>
-        </TextReveal>
+        <InlineAlert
+          error={error}
+          err={lastError ?? undefined}
+          networkStub
+          onRetry={
+            lastError && isNetworkError(lastError)
+              ? () => {
+                  setError("");
+                  setLastError(null);
+                  void retryLoad();
+                }
+              : undefined
+          }
+        />
       ) : null}
 
       <div
@@ -413,42 +436,49 @@ function LectureInner() {
                   stuck={processingStuck}
                 />
                 {processingStuck ? (
-                  <div className="mt-6 text-center">
-                    <p className="mb-3 text-sm" style={{ color: "var(--fg-muted)" }}>
-                      Обработка идёт дольше обычного. Можно подождать или перезапустить.
-                    </p>
-                    {lecture.audio_filename ? (
-                      <button
-                        type="button"
-                        className="btn-outline sm:!w-auto"
-                        disabled={busy}
-                        onClick={() => void onReprocess()}
-                      >
-                        <RefreshCw size={16} /> Обработать снова
-                      </button>
-                    ) : null}
+                  <div className="mt-6">
+                    <StatePlaceholder
+                      inline
+                      compact
+                      variant="processing-wait"
+                      actions={
+                        lecture.audio_filename
+                          ? [
+                              {
+                                label: "Обработать снова",
+                                onClick: () => void onReprocess(),
+                                primary: true,
+                              },
+                            ]
+                          : undefined
+                      }
+                    />
                   </div>
                 ) : null}
               </>
             ) : lecture.status === "needs_clarification" ? (
-              <div className="py-10 text-center">
-                <p className="mb-2 text-base font-medium" style={{ color: "var(--warn)" }}>
-                  Нужно уточнение
-                </p>
-                <p className="mx-auto mb-6 max-w-md text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-                  Не удалось полностью обработать лекцию. Загрузите аудио заново, добавьте PDF/DOCX
-                  или нажмите «Обработать снова».
-                </p>
-                {lecture.audio_filename ? (
-                  <button className="btn-primary sm:!w-auto" disabled={busy} onClick={() => void onReprocess()}>
-                    <RefreshCw size={16} /> Обработать снова
-                  </button>
-                ) : null}
-              </div>
+              <StatePlaceholder
+                inline
+                variant="clarification"
+                actions={
+                  lecture.audio_filename
+                    ? [
+                        {
+                          label: "Обработать снова",
+                          onClick: () => void onReprocess(),
+                          primary: true,
+                        },
+                      ]
+                    : undefined
+                }
+              />
             ) : lecture.notes_markdown ? (
               <MarkdownNotes content={lecture.notes_markdown} />
             ) : (
-              <QuickStartGuide />
+              <div className="space-y-6">
+                <StatePlaceholder inline compact variant="empty-notes" />
+                <QuickStartGuide />
+              </div>
             )}
             {lecture.materials.length > 0 ? (
               <div className="mt-8 border-t pt-4" style={{ borderColor: "var(--border)" }}>
@@ -460,6 +490,10 @@ function LectureInner() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            ) : lecture.status !== "processing" && lecture.notes_markdown ? (
+              <div className="mt-8 border-t pt-6" style={{ borderColor: "var(--border)" }}>
+                <StatePlaceholder inline compact variant="empty-materials" />
               </div>
             ) : null}
           </article>
@@ -492,9 +526,10 @@ function LectureInner() {
             </div>
             <div className="flex-1 space-y-3 overflow-y-auto overscroll-contain p-3 sm:p-4">
               {chatLoadFailed ? (
-                <NetworkStub
+                <StatePlaceholder
                   compact
-                  variant="network"
+                  inline
+                  variant="offline-chat"
                   onRetry={() => {
                     setChatLoadFailed(false);
                     void api
@@ -517,34 +552,7 @@ function LectureInner() {
                   <MarkdownNotes content={m.content} animate={false} />
                 </div>
               ))}
-              {!chat.length && !chatLoadFailed ? (
-                <div className="animate-text-in space-y-3">
-                  <p className="text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-                    Спросите по материалам этой лекции — ответ только из вашего конспекта.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      "Главные термины простыми словами",
-                      "Что было самое важное?",
-                      "Вопросы для экзамена",
-                    ].map((hint) => (
-                      <button
-                        key={hint}
-                        type="button"
-                        className="pressable rounded-full px-3 py-1.5 text-xs"
-                        style={{
-                          background: "var(--bg-soft)",
-                          color: "var(--fg-muted)",
-                          border: "1px solid var(--border)",
-                        }}
-                        onClick={() => setMessage(hint)}
-                      >
-                        {hint}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+              {!chat.length && !chatLoadFailed ? <ChatEmptyState onHint={setMessage} /> : null}
               {busy ? (
                 <div
                   className="animate-chat-in max-w-[85%] rounded-[12px] px-3 py-2.5 text-sm"

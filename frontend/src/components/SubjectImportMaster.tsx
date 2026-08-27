@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { Sparkles, Wand2, X } from "lucide-react";
-import { api, type Subject, type SubjectImportItem } from "@/lib/api";
+import { api, isNetworkError, type Subject, type SubjectImportItem } from "@/lib/api";
+import { InlineAlert } from "@/components/InlineAlert";
+import { StatePlaceholder } from "@/components/StatePlaceholder";
+import { errorMessage } from "@/lib/placeholders";
 
 type Props = {
   onCancel: () => void;
@@ -16,28 +19,34 @@ type Props = {
 export function SubjectImportMaster({ onCancel, onImported }: Props) {
   const [text, setText] = useState("");
   const [items, setItems] = useState<SubjectImportItem[] | null>(null);
+  const [importEmpty, setImportEmpty] = useState(false);
   const [engine, setEngine] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [lastError, setLastError] = useState<unknown>(null);
 
   async function onPreview() {
     if (!text.trim()) {
       setError("Вставьте список предметов или кусок расписания");
+      setImportEmpty(false);
       return;
     }
     setBusy(true);
     setError("");
+    setLastError(null);
+    setImportEmpty(false);
     try {
       const res = await api.previewSubjectImport(text.trim());
       if (!res.items.length) {
-        setError("Не нашли предметы в тексте — попробуйте по одному названию на строку");
+        setImportEmpty(true);
         setItems(null);
         return;
       }
       setItems(res.items);
       setEngine(res.engine);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось разобрать текст");
+      setLastError(err);
+      setError(errorMessage(err, "Не удалось разобрать текст"));
     } finally {
       setBusy(false);
     }
@@ -52,11 +61,13 @@ export function SubjectImportMaster({ onCancel, onImported }: Props) {
     }
     setBusy(true);
     setError("");
+    setLastError(null);
     try {
       const created = await api.confirmSubjectImport(items);
       onImported(created);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось создать предметы");
+      setLastError(err);
+      setError(errorMessage(err, "Не удалось создать предметы"));
     } finally {
       setBusy(false);
     }
@@ -98,19 +109,38 @@ export function SubjectImportMaster({ onCancel, onImported }: Props) {
       <div className="grid gap-4 p-4 sm:p-5">
         {!items ? (
           <>
+            {!text.trim() && !importEmpty && !error ? (
+              <StatePlaceholder inline compact variant="empty-import" />
+            ) : null}
             <div>
               <label className="label">Текст</label>
               <textarea
                 className="input min-h-[9rem] resize-y font-mono text-[0.85rem] leading-relaxed"
                 placeholder={`Философия\nАлгебра\nИстория России\n\nили кусок расписания — дни и время можно не чистить`}
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  setImportEmpty(false);
+                }}
               />
             </div>
+            {importEmpty ? (
+              <StatePlaceholder
+                compact
+                inline
+                variant="import-empty"
+                onRetry={() => void onPreview()}
+              />
+            ) : null}
             {error ? (
-              <p className="text-sm" style={{ color: "var(--danger)" }}>
-                {error}
-              </p>
+              <InlineAlert
+                error={error}
+                err={lastError ?? undefined}
+                networkStub
+                onRetry={
+                  lastError && isNetworkError(lastError) ? () => void onPreview() : undefined
+                }
+              />
             ) : null}
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button type="button" className="btn-ghost sm:!w-auto" onClick={onCancel} disabled={busy}>
@@ -163,9 +193,14 @@ export function SubjectImportMaster({ onCancel, onImported }: Props) {
               ))}
             </ul>
             {error ? (
-              <p className="text-sm" style={{ color: "var(--danger)" }}>
-                {error}
-              </p>
+              <InlineAlert
+                error={error}
+                err={lastError ?? undefined}
+                networkStub
+                onRetry={
+                  lastError && isNetworkError(lastError) ? () => void onConfirm() : undefined
+                }
+              />
             ) : null}
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-between">
               <button
@@ -175,6 +210,7 @@ export function SubjectImportMaster({ onCancel, onImported }: Props) {
                 onClick={() => {
                   setItems(null);
                   setError("");
+                  setImportEmpty(false);
                 }}
               >
                 Назад к тексту

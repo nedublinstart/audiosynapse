@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { BookOpen, ChevronRight, Layers, Plus, Sparkles, Wand2 } from "lucide-react";
+import { BookOpen, ChevronRight, Layers, Plus, Wand2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FadeIn } from "@/components/FadeIn";
 import { MonthCalendar } from "@/components/MonthCalendar";
 import { SubjectComposer } from "@/components/SubjectComposer";
 import { SubjectImportMaster } from "@/components/SubjectImportMaster";
-import { NetworkStub } from "@/components/NetworkStub";
-import { TextReveal } from "@/components/TextReveal";
-import { api, isNetworkError, networkErrorVariant, type CalendarLecture, type Subject } from "@/lib/api";
+import { ErrorPanel, InlineAlert } from "@/components/InlineAlert";
+import { SkeletonPills, SkeletonSubjectGrid } from "@/components/SkeletonList";
+import { StatePlaceholder } from "@/components/StatePlaceholder";
+import { api, isNetworkError, type CalendarLecture, type Subject } from "@/lib/api";
+import { errorMessage } from "@/lib/placeholders";
 
 function subjectLabel(count: number) {
   const mod10 = count % 10;
@@ -38,6 +40,7 @@ function DashboardInner() {
   const [calendarLectures, setCalendarLectures] = useState<CalendarLecture[]>([]);
   const [calMonth, setCalMonth] = useState(() => new Date());
   const [calLoading, setCalLoading] = useState(true);
+  const [calLoadError, setCalLoadError] = useState(false);
   const [mode, setMode] = useState<"none" | "create" | "import">("none");
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState<unknown>(null);
@@ -52,9 +55,14 @@ function DashboardInner() {
 
   const loadCalendar = useCallback(async (month: Date) => {
     setCalLoading(true);
+    setCalLoadError(false);
     try {
       const rows = await api.calendar(month.getFullYear(), month.getMonth() + 1);
       setCalendarLectures(rows);
+    } catch (e) {
+      setCalLoadError(true);
+      setLoadError(e);
+      setError(errorMessage(e, "Не удалось загрузить календарь"));
     } finally {
       setCalLoading(false);
     }
@@ -63,18 +71,24 @@ function DashboardInner() {
   useEffect(() => {
     void loadSubjects().catch((e) => {
       setLoadError(e);
-      setError(e instanceof Error ? e.message : "Ошибка загрузки");
+      setError(errorMessage(e, "Не удалось загрузить предметы"));
       setLoaded(true);
     });
   }, [loadSubjects]);
 
   useEffect(() => {
-    void loadCalendar(calMonth).catch((e) => {
-      setLoadError(e);
-      setError(e instanceof Error ? e.message : "Ошибка загрузки");
-      setCalLoading(false);
+    void loadCalendar(calMonth).catch(() => {
+      /* handled in loadCalendar */
     });
   }, [calMonth, loadCalendar]);
+
+  const retryAll = () => {
+    setLoadError(null);
+    setError("");
+    setCalLoadError(false);
+    void loadSubjects();
+    void loadCalendar(calMonth);
+  };
 
   useEffect(() => {
     if (!toast) return;
@@ -108,10 +122,7 @@ function DashboardInner() {
                 </span>
               </div>
             ) : (
-              <div className="flex gap-2">
-                <div className="skeleton h-7 w-24 rounded-full" />
-                <div className="skeleton h-7 w-28 rounded-full" />
-              </div>
+              <SkeletonPills />
             )}
           </div>
         </section>
@@ -126,25 +137,12 @@ function DashboardInner() {
         </div>
       ) : null}
 
-      {loadError && isNetworkError(loadError) ? (
+      {loadError && isNetworkError(loadError) && loaded && !subjects.length ? (
         <div className="mb-4">
-          <NetworkStub
-            variant={networkErrorVariant(loadError)}
-            compact
-            onRetry={() => {
-              setLoadError(null);
-              setError("");
-              void loadSubjects();
-              void loadCalendar(calMonth);
-            }}
-          />
+          <ErrorPanel err={loadError} error={error} onRetry={retryAll} />
         </div>
       ) : error ? (
-        <TextReveal contentKey={error}>
-          <p className="mb-4 text-sm" style={{ color: "var(--danger)" }}>
-            {error}
-          </p>
-        </TextReveal>
+        <InlineAlert error={error} err={loadError ?? undefined} onRetry={retryAll} networkStub />
       ) : null}
 
       <FadeIn>
@@ -154,6 +152,8 @@ function DashboardInner() {
             month={calMonth}
             onMonthChange={setCalMonth}
             loading={calLoading}
+            loadError={calLoadError}
+            onRetry={() => void loadCalendar(calMonth)}
           />
         </div>
       </FadeIn>
@@ -219,15 +219,7 @@ function DashboardInner() {
       ) : null}
 
       {!loaded ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="panel h-[9.5rem] p-4 sm:p-5">
-              <div className="skeleton mb-3 h-4 w-1/2" />
-              <div className="skeleton mb-2 h-3 w-full" />
-              <div className="skeleton h-3 w-2/3" />
-            </div>
-          ))}
-        </div>
+        <SkeletonSubjectGrid />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {subjects.map((subject) => (
@@ -275,33 +267,14 @@ function DashboardInner() {
             </Link>
           ))}
           {!subjects.length && mode === "none" ? (
-            <div
-              className="panel flex flex-col items-center justify-center px-6 py-12 text-center sm:col-span-2 sm:py-14 lg:col-span-3"
-              style={{ color: "var(--fg-muted)" }}
-            >
-              <div
-                className="mb-4 flex h-12 w-12 items-center justify-center rounded-[14px]"
-                style={{
-                  background: "var(--accent-soft)",
-                  color: "var(--accent)",
-                }}
-              >
-                <Sparkles size={22} />
-              </div>
-              <p className="mb-1 text-base font-medium" style={{ color: "var(--fg)" }}>
-                Начните с предметов
-              </p>
-              <p className="max-w-sm text-sm leading-relaxed">
-                Добавьте один предмет или вставьте весь список — расписание и время не нужны.
-              </p>
-              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-                <button type="button" className="btn-outline sm:!w-auto" onClick={() => setMode("import")}>
-                  <Wand2 size={16} /> Импорт через ИИ
-                </button>
-                <button type="button" className="btn-primary sm:!w-auto" onClick={() => setMode("create")}>
-                  <Plus size={16} /> Добавить предмет
-                </button>
-              </div>
+            <div className="sm:col-span-2 lg:col-span-3">
+              <StatePlaceholder
+                variant="empty-subjects"
+                actions={[
+                  { label: "Импорт через ИИ", onClick: () => setMode("import") },
+                  { label: "Добавить предмет", onClick: () => setMode("create"), primary: true },
+                ]}
+              />
             </div>
           ) : null}
         </div>

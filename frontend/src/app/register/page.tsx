@@ -6,7 +6,8 @@ import { FormEvent, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { SynapseMark } from "@/components/SynapseMark";
 import { FadeIn } from "@/components/FadeIn";
-import { TextReveal } from "@/components/TextReveal";
+import { InlineAlert } from "@/components/InlineAlert";
+import { isNetworkError } from "@/lib/api";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -15,20 +16,27 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [lastError, setLastError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function submitRegister() {
     setBusy(true);
     setError("");
+    setLastError(null);
     try {
       await register(fullName, email, password);
       router.push("/app");
     } catch (err) {
+      setLastError(err);
       setError(err instanceof Error ? err.message : "Ошибка регистрации");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    await submitRegister();
   }
 
   return (
@@ -84,11 +92,14 @@ export default function RegisterPage() {
               />
             </div>
             {error ? (
-              <TextReveal contentKey={error}>
-                <p className="animate-fade-in text-sm" style={{ color: "var(--danger)" }}>
-                  {error}
-                </p>
-              </TextReveal>
+              <InlineAlert
+                error={error}
+                err={lastError ?? undefined}
+                networkStub
+                onRetry={
+                  lastError && isNetworkError(lastError) ? () => void submitRegister() : undefined
+                }
+              />
             ) : null}
             <button className="btn-primary w-full" disabled={busy}>
               {busy ? "Создаём…" : "Зарегистрироваться"}
