@@ -123,6 +123,25 @@ export function setToken(token: string | null) {
   else localStorage.removeItem("synapse_token");
 }
 
+function parseApiErrorDetail(data: unknown, fallback: string): string {
+  if (!data || typeof data !== "object") return fallback;
+  const detail = (data as { detail?: unknown }).detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object" && "msg" in item) {
+          return String((item as { msg?: string }).msg || "");
+        }
+        return "";
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join(". ");
+  }
+  return fallback;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -150,11 +169,11 @@ async function request<T>(
       let detail = res.statusText;
       try {
         const data = await res.json();
-        detail = data.detail || JSON.stringify(data);
+        detail = parseApiErrorDetail(data, "Не удалось выполнить запрос");
       } catch {
         /* ignore */
       }
-      throw new ApiError(res.status, typeof detail === "string" ? detail : "Request failed");
+      throw new ApiError(res.status, typeof detail === "string" ? detail : "Не удалось выполнить запрос");
     }
     if (res.status === 204) return undefined as T;
     return res.json();
@@ -190,18 +209,18 @@ function uploadForm<T>(
         try {
           resolve(JSON.parse(xhr.responseText) as T);
         } catch {
-          reject(new ApiError(xhr.status, "Invalid response"));
+          reject(new ApiError(xhr.status, "Некорректный ответ сервера"));
         }
         return;
       }
       let detail = xhr.statusText;
       try {
         const data = JSON.parse(xhr.responseText);
-        detail = data.detail || detail;
+        detail = parseApiErrorDetail(data, "Не удалось загрузить файл");
       } catch {
         /* ignore */
       }
-      reject(new ApiError(xhr.status, typeof detail === "string" ? detail : "Upload failed"));
+      reject(new ApiError(xhr.status, typeof detail === "string" ? detail : "Не удалось загрузить файл"));
     });
 
     xhr.addEventListener("error", () => reject(new ApiError(0, "Сеть недоступна — проверьте соединение")));

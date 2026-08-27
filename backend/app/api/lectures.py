@@ -58,7 +58,7 @@ ALLOWED_MATERIALS = {".pdf", ".pptx", ".docx", ".png", ".jpg", ".jpeg", ".webp",
 def _get_owned_subject(db: Session, user: User, subject_id: int) -> Subject:
     subject = db.query(Subject).filter(Subject.id == subject_id, Subject.owner_id == user.id).first()
     if not subject:
-        raise HTTPException(status_code=404, detail="Subject not found")
+        raise HTTPException(status_code=404, detail="Предмет не найден")
     return subject
 
 
@@ -71,7 +71,7 @@ def _get_owned_lecture(db: Session, user: User, lecture_id: int) -> Lecture:
         .first()
     )
     if not lecture:
-        raise HTTPException(status_code=404, detail="Lecture not found")
+        raise HTTPException(status_code=404, detail="Лекция не найдена")
     return lecture
 
 
@@ -291,7 +291,10 @@ async def upload_material(
     lecture = _get_owned_lecture(db, user, lecture_id)
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in ALLOWED_MATERIALS:
-        raise HTTPException(status_code=400, detail=f"Unsupported material. Allowed: {sorted(ALLOWED_MATERIALS)}")
+        raise HTTPException(
+            status_code=400,
+            detail="Формат файла не поддерживается. Допустимо: PDF, DOCX, PPTX, изображения, TXT.",
+        )
 
     dest_dir = settings.upload_dir / f"lecture_{lecture.id}" / "materials"
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -339,8 +342,8 @@ async def upload_material(
             logger.exception("enrich_notes failed for lecture %s", lecture_id)
             lecture.status = LectureStatus.ready
             lecture.enrichment_notice = (
-                f"Не удалось обновить конспект ИИ ({type(exc).__name__}). "
-                "Предыдущая версия сохранена — попробуйте снова позже."
+                "Не удалось обновить конспект с новыми материалами. "
+                "Предыдущая версия сохранена — попробуйте позже."
             )
             lecture.processing_stage = ProcessingStage.done.value
             lecture.processing_progress = 100
@@ -360,7 +363,7 @@ async def reprocess_lecture(
 ) -> LectureOut:
     lecture = _get_owned_lecture(db, user, lecture_id)
     if not lecture.audio_path:
-        raise HTTPException(status_code=400, detail="No audio uploaded")
+        raise HTTPException(status_code=400, detail="Сначала загрузите аудио лекции")
     lecture.status = LectureStatus.processing
     lecture.transcript = None
     lecture.notes_markdown = None
@@ -457,7 +460,7 @@ def calendar_lectures(
     y = year or now.year
     m = month or now.month
     if m < 1 or m > 12:
-        raise HTTPException(status_code=400, detail="Invalid month")
+        raise HTTPException(status_code=400, detail="Некорректный месяц")
     if m == 12:
         start = datetime(y, m, 1, tzinfo=timezone.utc)
         end = datetime(y + 1, 1, 1, tzinfo=timezone.utc)

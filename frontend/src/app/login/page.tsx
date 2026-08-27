@@ -48,7 +48,7 @@ export default function LoginPage() {
           </p>
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
-              <label className="label">Email</label>
+              <label className="label">Эл. почта</label>
               <input
                 className="input"
                 type="email"

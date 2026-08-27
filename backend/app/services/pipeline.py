@@ -251,7 +251,7 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
             lecture.transcript = transcript
             if result.duration_seconds:
                 lecture.duration_seconds = result.duration_seconds
-            notices.append(f"Транскрибация: {result.engine}.")
+            notices.append("Аудио расшифровано.")
             update_lecture_progress(
                 db,
                 lecture,
@@ -318,7 +318,7 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
 
         lecture.notes_markdown = notes
         if engine == "local":
-            notices.append("Конспект собран локально: добавьте AI-ключ для полного качества.")
+            notices.append("Конспект собран локально — для полного качества подключите ИИ-ключ.")
         elif engine == "ai":
             notices.append("Конспект собран с полным разбором материала.")
 
@@ -335,7 +335,7 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
         db.rollback()
         finalize_pipeline_with_fallback(
             lecture_id,
-            reason=f"Ошибка обработки: {type(exc).__name__}",
+            reason="Не удалось завершить обработку — показан упрощённый конспект.",
             try_fallback_notes=True,
         )
     finally:

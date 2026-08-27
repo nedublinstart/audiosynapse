@@ -23,6 +23,7 @@ type Props = {
   uploadProgress?: number | null;
   currentFilename?: string | null;
   onFile: (file: File) => void;
+  onError?: (message: string) => void;
 };
 
 export function AudioUploadZone({
@@ -31,9 +32,11 @@ export function AudioUploadZone({
   uploadProgress,
   currentFilename,
   onFile,
+  onError,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [localError, setLocalError] = useState("");
   const [preview, setPreview] = useState<{ name: string; size: number; duration?: number } | null>(
     null,
   );
@@ -42,13 +45,18 @@ export function AudioUploadZone({
     (file: File | undefined) => {
       if (!file || disabled || busy) return;
       if (file.size > MAX_MB * 1024 * 1024) {
-        alert(`Файл слишком большой. Максимум ${MAX_MB} МБ.`);
+        const msg = `Файл слишком большой. Максимум ${MAX_MB} МБ.`;
+        setLocalError(msg);
+        onError?.(msg);
         return;
       }
       if (file.size < 1024) {
-        alert("Файл слишком маленький — похоже, он пустой.");
+        const msg = "Файл слишком маленький — похоже, он пустой.";
+        setLocalError(msg);
+        onError?.(msg);
         return;
       }
+      setLocalError("");
       setPreview({ name: file.name, size: file.size });
       const url = URL.createObjectURL(file);
       const audio = new Audio(url);
@@ -59,7 +67,7 @@ export function AudioUploadZone({
       audio.addEventListener("error", () => URL.revokeObjectURL(url));
       onFile(file);
     },
-    [busy, disabled, onFile],
+    [busy, disabled, onError, onFile],
   );
 
   const uploading = uploadProgress != null && uploadProgress < 100;
@@ -185,6 +193,12 @@ export function AudioUploadZone({
             <X size={14} />
           </button>
         </div>
+      ) : null}
+
+      {localError ? (
+        <p className="text-sm" style={{ color: "var(--danger)" }}>
+          {localError}
+        </p>
       ) : null}
     </div>
   );

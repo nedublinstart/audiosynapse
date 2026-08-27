@@ -130,7 +130,7 @@ def create_subject(
     if payload.semester_id:
         semester = db.get(Semester, payload.semester_id)
         if not semester or semester.owner_id != user.id:
-            raise HTTPException(status_code=404, detail="Semester not found")
+            raise HTTPException(status_code=404, detail="Семестр не найден")
     subject = Subject(
         name=payload.name.strip(),
         description=payload.description,
@@ -189,7 +189,7 @@ def get_subject(
         .first()
     )
     if not subject:
-        raise HTTPException(status_code=404, detail="Subject not found")
+        raise HTTPException(status_code=404, detail="Предмет не найден")
     return _subject_out(subject)
 
 
@@ -202,7 +202,7 @@ def update_subject(
 ) -> SubjectOut:
     subject = db.query(Subject).filter(Subject.id == subject_id, Subject.owner_id == user.id).first()
     if not subject:
-        raise HTTPException(status_code=404, detail="Subject not found")
+        raise HTTPException(status_code=404, detail="Предмет не найден")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(subject, field, value)
     db.commit()
@@ -227,7 +227,7 @@ def delete_subject(
 ) -> Response:
     subject = db.query(Subject).filter(Subject.id == subject_id, Subject.owner_id == user.id).first()
     if not subject:
-        raise HTTPException(status_code=404, detail="Subject not found")
+        raise HTTPException(status_code=404, detail="Предмет не найден")
     db.delete(subject)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -242,7 +242,7 @@ def add_schedule_slot(
 ) -> ScheduleSlotOut:
     subject = db.query(Subject).filter(Subject.id == subject_id, Subject.owner_id == user.id).first()
     if not subject:
-        raise HTTPException(status_code=404, detail="Subject not found")
+        raise HTTPException(status_code=404, detail="Предмет не найден")
     slot = ScheduleSlot(
         subject_id=subject.id,
         weekday=payload.weekday,

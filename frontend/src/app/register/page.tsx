@@ -43,9 +43,9 @@ export default function RegisterPage() {
 
       <FadeIn delay={40}>
         <div className="panel p-5 sm:p-7">
-          <h1 className="page-title mb-1 text-2xl sm:text-[1.75rem]">Профиль</h1>
+          <h1 className="page-title mb-1 text-2xl sm:text-[1.75rem]">Регистрация</h1>
           <p className="mb-6 text-sm" style={{ color: "var(--fg-muted)" }}>
-            Семестр → предмет → лекция
+            Предмет → лекция → конспект. Без расписания.
           </p>
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
@@ -59,7 +59,7 @@ export default function RegisterPage() {
               />
             </div>
             <div>
-              <label className="label">Email</label>
+              <label className="label">Эл. почта</label>
               <input
                 className="input"
                 type="email"

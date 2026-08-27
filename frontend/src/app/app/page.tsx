@@ -12,6 +12,15 @@ import { SubjectComposer } from "@/components/SubjectComposer";
 import { SubjectImportMaster } from "@/components/SubjectImportMaster";
 import { api, type CalendarLecture, type Subject } from "@/lib/api";
 
+function subjectLabel(count: number) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod100 >= 11 && mod100 <= 14) return "предметов";
+  if (mod10 === 1) return "предмет";
+  if (mod10 >= 2 && mod10 <= 4) return "предмета";
+  return "предметов";
+}
+
 function lectureLabel(count: number) {
   const mod10 = count % 10;
   const mod100 = count % 100;
@@ -86,7 +95,7 @@ function DashboardInner() {
               <div className="flex flex-wrap gap-2">
                 <span className="stat-pill">
                   <Layers size={13} style={{ color: "var(--accent)" }} />
-                  {subjects.length} {subjects.length === 1 ? "предмет" : "предметов"}
+                  {subjects.length} {subjectLabel(subjects.length)}
                 </span>
                 <span className="stat-pill">
                   <BookOpen size={13} style={{ color: "var(--accent)" }} />

@@ -31,6 +31,15 @@ function dayKey(d: Date) {
   return format(d, "yyyy-MM-dd");
 }
 
+function lectureCountLabel(count: number) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod100 >= 11 && mod100 <= 14) return "лекций";
+  if (mod10 === 1) return "лекция";
+  if (mod10 >= 2 && mod10 <= 4) return "лекции";
+  return "лекций";
+}
+
 /** Square month calendar — lectures as colored dots, no clock times. */
 export function MonthCalendar({ lectures, month, onMonthChange, loading }: Props) {
   const [selected, setSelected] = useState<Date | null>(new Date());
@@ -113,7 +122,7 @@ export function MonthCalendar({ lectures, month, onMonthChange, loading }: Props
               data-selected={isSelected ? "1" : "0"}
               data-has={items.length ? "1" : "0"}
               onClick={() => setSelected(day)}
-              aria-label={`${format(day, "d MMMM", { locale: ru })}${items.length ? `, ${items.length} лекций` : ""}`}
+              aria-label={`${format(day, "d MMMM", { locale: ru })}${items.length ? `, ${items.length} ${lectureCountLabel(items.length)}` : ""}`}
             >
               <span className="month-cal-daynum">{format(day, "d")}</span>
               <span className="month-cal-dots" aria-hidden>

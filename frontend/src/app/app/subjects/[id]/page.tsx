@@ -16,6 +16,7 @@ function SubjectInner() {
   const params = useParams();
   const router = useRouter();
   const subjectId = Number(params.id);
+  const invalidId = !Number.isFinite(subjectId) || subjectId <= 0;
   const [subject, setSubject] = useState<Subject | null>(null);
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [title, setTitle] = useState("");
@@ -26,6 +27,11 @@ function SubjectInner() {
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
+    if (invalidId) {
+      setError("Некорректная ссылка на предмет");
+      setLoaded(true);
+      return;
+    }
     const [s, l] = await Promise.all([
       api.getSubject(subjectId),
       api.listLectures(subjectId),
@@ -33,7 +39,7 @@ function SubjectInner() {
     setSubject(s);
     setLectures(l);
     setLoaded(true);
-  }, [subjectId]);
+  }, [invalidId, subjectId]);
 
   useEffect(() => {
     void load().catch((e) => {
@@ -64,8 +70,15 @@ function SubjectInner() {
 
   async function onDeleteSubject() {
     if (!confirm("Удалить предмет и все лекции?")) return;
-    await api.deleteSubject(subjectId);
-    router.push("/app");
+    setBusy(true);
+    setError("");
+    try {
+      await api.deleteSubject(subjectId);
+      router.push("/app");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось удалить предмет");
+      setBusy(false);
+    }
   }
 
   return (

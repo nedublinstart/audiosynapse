@@ -31,6 +31,7 @@ import { api, type ChatMessage, type Lecture } from "@/lib/api";
 function LectureInner() {
   const params = useParams();
   const lectureId = Number(params.id);
+  const invalidId = !Number.isFinite(lectureId) || lectureId <= 0;
   const [lecture, setLecture] = useState<Lecture | null>(null);
   const [tab, setTab] = useState<"notes" | "chat">("notes");
   const [chat, setChat] = useState<ChatMessage[]>([]);
@@ -43,14 +44,19 @@ function LectureInner() {
   const materialRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processingSinceRef = useRef<number | null>(null);
+  const prevStatusRef = useRef<string | null>(null);
   const [processingStuck, setProcessingStuck] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
+    if (invalidId) {
+      setError("Некорректная ссылка на лекцию");
+      return null;
+    }
     const data = await api.getLecture(lectureId);
     setLecture(data);
     return data;
-  }, [lectureId]);
+  }, [invalidId, lectureId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -94,9 +100,14 @@ function LectureInner() {
   }, [tab, lectureId]);
 
   useEffect(() => {
-    if (lecture?.status === "ready" && lecture.notes_markdown) {
+    if (
+      lecture?.status === "ready" &&
+      lecture.notes_markdown &&
+      prevStatusRef.current === "processing"
+    ) {
       setSuccess("Конспект готов! Можно читать, экспортировать или спросить в чате.");
     }
+    prevStatusRef.current = lecture?.status ?? null;
   }, [lecture?.status, lecture?.notes_markdown]);
 
   useEffect(() => {
@@ -170,7 +181,7 @@ function LectureInner() {
     try {
       const assistant = await api.chat(lectureId, text, examMode);
       setChat((prev) => [...prev, assistant]);
-    } catch (err) {
+    } catch {
       const fallback: ChatMessage = {
         id: Date.now() + 1,
         role: "assistant",
@@ -181,7 +192,6 @@ function LectureInner() {
         created_at: new Date().toISOString(),
       };
       setChat((prev) => [...prev, fallback]);
-      setError(err instanceof Error ? err.message : "Ошибка чата — показан запасной ответ");
     } finally {
       setBusy(false);
     }
@@ -194,7 +204,7 @@ function LectureInner() {
           <div className="skeleton h-8 w-48" />
           <div className="skeleton h-40 w-full" />
           <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-            {error || "Загрузка лекции…"}
+            {error || (invalidId ? "Лекция не найдена" : "Загрузка лекции…")}
           </p>
         </div>
       </AppShell>
@@ -231,7 +241,7 @@ function LectureInner() {
               className="btn-ghost !min-h-10 !px-2.5"
             >
               <ArrowLeft size={16} />
-              <span className="hidden xs:inline sm:inline">К предмету</span>
+              <span className="hidden sm:inline">К предмету</span>
             </Link>
             <StatusBadge status={lecture.status} />
             {lecture.audio_filename ? (
@@ -249,6 +259,7 @@ function LectureInner() {
               uploadProgress={uploadProgress}
               currentFilename={lecture.audio_filename}
               onFile={(f) => void onAudio(f)}
+              onError={(msg) => setError(msg)}
             />
             <div className="flex flex-wrap gap-2">
               <input

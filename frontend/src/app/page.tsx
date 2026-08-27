@@ -16,6 +16,18 @@ export default function HomePage() {
     if (!loading && user) router.replace("/app");
   }, [loading, user, router]);
 
+  if (loading) {
+    return (
+      <div className="relative min-h-dvh overflow-hidden">
+        <div className="relative mx-auto flex min-h-dvh max-w-xl flex-col justify-center safe-px py-16">
+          <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
+            Загрузка…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-dvh overflow-hidden">
       <div className="relative mx-auto flex min-h-dvh max-w-xl flex-col justify-center safe-px py-16 sm:py-20">
@@ -38,7 +50,7 @@ export default function HomePage() {
             className="mb-8 max-w-md text-[1.05rem] leading-relaxed"
             style={{ color: "var(--fg-muted)" }}
           >
-            Аудио лекции → ясный конспект. Без расписания и лишнего.
+            Аудиолекции → ясный конспект. Без расписания и лишнего.
           </p>
         </FadeIn>
 
