@@ -6,6 +6,7 @@ import { FormEvent, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { SynapseMark } from "@/components/SynapseMark";
 import { FadeIn } from "@/components/FadeIn";
+import { TextReveal } from "@/components/TextReveal";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -71,9 +72,11 @@ export default function LoginPage() {
               />
             </div>
             {error ? (
-              <p className="animate-fade-in text-sm" style={{ color: "var(--danger)" }}>
-                {error}
-              </p>
+              <TextReveal contentKey={error}>
+                <p className="animate-fade-in text-sm" style={{ color: "var(--danger)" }}>
+                  {error}
+                </p>
+              </TextReveal>
             ) : null}
             <button className="btn-primary w-full" disabled={busy}>
               {busy ? "Входим…" : "Войти"}

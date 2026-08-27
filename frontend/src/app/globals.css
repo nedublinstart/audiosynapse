@@ -254,6 +254,26 @@ html.dark body::after {
   }
 }
 
+@keyframes text-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes press-down {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(0.97);
+  }
+}
+
 @keyframes press-ripple {
   from {
     opacity: 0.2;
@@ -291,6 +311,27 @@ html.dark body::after {
   animation: toast-in 0.22s var(--ease-expo) both;
 }
 
+.animate-text-in {
+  animation: text-reveal 0.32s var(--ease-expo) both;
+}
+
+.animate-chat-in {
+  animation: text-reveal 0.26s var(--ease-expo) both;
+}
+
+.pressable {
+  transition:
+    transform 0.16s var(--ease-expo),
+    opacity 0.16s var(--ease-expo),
+    border-color 0.2s var(--ease-expo),
+    background 0.2s var(--ease-expo);
+}
+
+.pressable:active:not(:disabled) {
+  transform: scale(0.985);
+  opacity: 0.94;
+}
+
 .stagger > * {
   animation: fade-in var(--fade-duration, 0.28s) var(--ease-expo) both;
 }
@@ -322,6 +363,8 @@ html.dark body::after {
   .animate-hero-reveal,
   .animate-float,
   .animate-toast,
+  .animate-text-in,
+  .animate-chat-in,
   .stagger > *,
   .ambient-orb,
   .ambient-blob,
@@ -332,12 +375,14 @@ html.dark body::after {
   .magnetic-surface,
   .panel-interactive,
   .btn,
-  .subject-card {
+  .subject-card,
+  .pressable {
     transition: none !important;
   }
 
   .magnetic-surface:hover,
-  .panel-interactive:hover {
+  .panel-interactive:hover,
+  .pressable:active {
     transform: none !important;
   }
 }
@@ -447,6 +492,15 @@ html.dark body::after {
     position: relative;
     overflow: hidden;
     isolation: isolate;
+    transition:
+      transform 0.16s var(--ease-expo),
+      border-color 0.2s var(--ease-expo),
+      opacity 0.16s var(--ease-expo);
+  }
+
+  .subject-card:active {
+    transform: scale(0.992);
+    opacity: 0.96;
   }
 
   .subject-card::before {
@@ -504,6 +558,8 @@ html.dark body::after {
     background: color-mix(in srgb, var(--bg-soft) 55%, transparent);
     padding: 0.35rem 0.4rem 0.4rem;
     transition:
+      transform 0.14s var(--ease-expo),
+      opacity 0.14s var(--ease-expo),
       border-color 0.2s var(--ease-expo),
       background 0.2s var(--ease-expo);
     min-height: 0;
@@ -531,6 +587,11 @@ html.dark body::after {
   .month-cal-cell:hover {
     transform: none;
     border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
+  }
+
+  .month-cal-cell:active {
+    transform: scale(0.96);
+    opacity: 0.92;
   }
 
   .month-cal-daynum {
@@ -678,7 +739,15 @@ html.dark body::after {
 
   .tab-btn {
     position: relative;
-    transition: color 0.4s var(--ease-expo);
+    transition:
+      color 0.2s var(--ease-expo),
+      transform 0.14s var(--ease-expo),
+      opacity 0.14s var(--ease-expo);
+  }
+
+  .tab-btn:active {
+    transform: scale(0.98);
+    opacity: 0.9;
   }
 
   .tab-btn[aria-selected="true"]::after {
@@ -705,7 +774,19 @@ html.dark body::after {
       background 0.2s var(--ease-expo),
       color 0.2s var(--ease-expo),
       border-color 0.2s var(--ease-expo),
-      opacity 0.2s var(--ease-expo);
+      transform 0.14s var(--ease-expo),
+      box-shadow 0.2s var(--ease-expo);
+  }
+
+  .btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s var(--ease-expo);
   }
 
   .btn:hover:not(:disabled) {
@@ -713,8 +794,12 @@ html.dark body::after {
   }
 
   .btn:active:not(:disabled) {
-    opacity: 0.88;
-    transition-duration: 0.08s;
+    transform: scale(0.97);
+  }
+
+  .btn:active:not(:disabled)::after {
+    opacity: 1;
+    animation: press-ripple 0.35s var(--ease-expo) forwards;
   }
 
   .btn:disabled {

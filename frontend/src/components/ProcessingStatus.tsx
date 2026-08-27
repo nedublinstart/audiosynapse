@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { TextReveal } from "@/components/TextReveal";
 
 const PIPELINE_STEPS = [
   { id: "queued", label: "Подготовка", hint: "Проверяем файл и ставим в очередь" },
@@ -45,9 +46,11 @@ export function ProcessingStatus({ stage, progress = 0, message, audioSizeBytes,
           Обрабатываем лекцию
         </p>
         <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-          {stuck
-            ? "Обработка занимает больше времени, чем обычно — мы всё ещё ждём результат."
-            : message || "Это займёт 1–4 минуты в зависимости от длины записи."}
+          <TextReveal contentKey={message ?? stage ?? "idle"} as="span">
+            {stuck
+              ? "Обработка занимает больше времени, чем обычно — мы всё ещё ждём результат."
+              : message || "Это займёт 1–4 минуты в зависимости от длины записи."}
+          </TextReveal>
         </p>
         {audioSizeBytes ? (
           <p className="mt-1 text-xs" style={{ color: "var(--fg-muted)" }}>

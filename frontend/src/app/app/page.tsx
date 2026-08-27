@@ -10,7 +10,9 @@ import { FadeIn } from "@/components/FadeIn";
 import { MonthCalendar } from "@/components/MonthCalendar";
 import { SubjectComposer } from "@/components/SubjectComposer";
 import { SubjectImportMaster } from "@/components/SubjectImportMaster";
-import { api, type CalendarLecture, type Subject } from "@/lib/api";
+import { NetworkStub } from "@/components/NetworkStub";
+import { TextReveal } from "@/components/TextReveal";
+import { api, isNetworkError, networkErrorVariant, type CalendarLecture, type Subject } from "@/lib/api";
 
 function subjectLabel(count: number) {
   const mod10 = count % 10;
@@ -38,6 +40,7 @@ function DashboardInner() {
   const [calLoading, setCalLoading] = useState(true);
   const [mode, setMode] = useState<"none" | "create" | "import">("none");
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [toast, setToast] = useState("");
   const [loaded, setLoaded] = useState(false);
 
@@ -59,14 +62,16 @@ function DashboardInner() {
 
   useEffect(() => {
     void loadSubjects().catch((e) => {
-      setError(e.message);
+      setLoadError(e);
+      setError(e instanceof Error ? e.message : "Ошибка загрузки");
       setLoaded(true);
     });
   }, [loadSubjects]);
 
   useEffect(() => {
     void loadCalendar(calMonth).catch((e) => {
-      setError(e.message);
+      setLoadError(e);
+      setError(e instanceof Error ? e.message : "Ошибка загрузки");
       setCalLoading(false);
     });
   }, [calMonth, loadCalendar]);
@@ -121,10 +126,25 @@ function DashboardInner() {
         </div>
       ) : null}
 
-      {error ? (
-        <p className="mb-4 animate-toast text-sm" style={{ color: "var(--danger)" }}>
-          {error}
-        </p>
+      {loadError && isNetworkError(loadError) ? (
+        <div className="mb-4">
+          <NetworkStub
+            variant={networkErrorVariant(loadError)}
+            compact
+            onRetry={() => {
+              setLoadError(null);
+              setError("");
+              void loadSubjects();
+              void loadCalendar(calMonth);
+            }}
+          />
+        </div>
+      ) : error ? (
+        <TextReveal contentKey={error}>
+          <p className="mb-4 text-sm" style={{ color: "var(--danger)" }}>
+            {error}
+          </p>
+        </TextReveal>
       ) : null}
 
       <FadeIn>

@@ -8,7 +8,9 @@ import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FadeIn } from "@/components/FadeIn";
 import { StatusBadge } from "@/components/StatusBadge";
-import { api, type Lecture, type Subject } from "@/lib/api";
+import { api, isNetworkError, networkErrorVariant, type Lecture, type Subject } from "@/lib/api";
+import { NetworkStub } from "@/components/NetworkStub";
+import { TextReveal } from "@/components/TextReveal";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
@@ -24,6 +26,7 @@ function SubjectInner() {
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
@@ -43,7 +46,8 @@ function SubjectInner() {
 
   useEffect(() => {
     void load().catch((e) => {
-      setError(e.message);
+      setLoadError(e);
+      setError(e instanceof Error ? e.message : "Ошибка загрузки");
       setLoaded(true);
     });
   }, [load]);
@@ -153,10 +157,24 @@ function SubjectInner() {
         </FadeIn>
       ) : null}
 
-      {error ? (
-        <p className="mb-4 text-sm" style={{ color: "var(--danger)" }}>
-          {error}
-        </p>
+      {loadError && isNetworkError(loadError) ? (
+        <div className="mb-4">
+          <NetworkStub
+            variant={networkErrorVariant(loadError)}
+            compact
+            onRetry={() => {
+              setLoadError(null);
+              setError("");
+              void load();
+            }}
+          />
+        </div>
+      ) : error ? (
+        <TextReveal contentKey={error}>
+          <p className="mb-4 text-sm" style={{ color: "var(--danger)" }}>
+            {error}
+          </p>
+        </TextReveal>
       ) : null}
 
       {!loaded ? (

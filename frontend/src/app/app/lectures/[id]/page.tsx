@@ -26,7 +26,9 @@ import {
 import { AudioUploadZone } from "@/components/AudioUploadZone";
 import { ProcessingStatus } from "@/components/ProcessingStatus";
 import { QuickStartGuide } from "@/components/QuickStartGuide";
-import { api, type ChatMessage, type Lecture } from "@/lib/api";
+import { NetworkStub } from "@/components/NetworkStub";
+import { TextReveal } from "@/components/TextReveal";
+import { api, isNetworkError, networkErrorVariant, type ChatMessage, type Lecture } from "@/lib/api";
 
 function LectureInner() {
   const params = useParams();
@@ -46,6 +48,8 @@ function LectureInner() {
   const processingSinceRef = useRef<number | null>(null);
   const prevStatusRef = useRef<string | null>(null);
   const [processingStuck, setProcessingStuck] = useState(false);
+  const [loadFailed, setLoadFailed] = useState<unknown>(null);
+  const [chatLoadFailed, setChatLoadFailed] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -58,6 +62,17 @@ function LectureInner() {
     return data;
   }, [invalidId, lectureId]);
 
+  const retryLoad = useCallback(() => {
+    setLoadFailed(null);
+    setError("");
+    void load()
+      .then(() => setLoadFailed(null))
+      .catch((e) => {
+        setLoadFailed(e);
+        setError(e instanceof Error ? e.message : "Ошибка загрузки");
+      });
+  }, [load]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const q = new URLSearchParams(window.location.search);
@@ -66,8 +81,31 @@ function LectureInner() {
   }, []);
 
   useEffect(() => {
-    void load().catch((e) => setError(e.message));
-  }, [load]);
+    if (invalidId) {
+      const err = new Error("Некорректная ссылка на лекцию");
+      setLoadFailed(err);
+      setError(err.message);
+      return;
+    }
+    void load()
+      .then(() => setLoadFailed(null))
+      .catch((e) => {
+        setLoadFailed(e);
+        setError(e instanceof Error ? e.message : "Ошибка загрузки");
+      });
+  }, [invalidId, load]);
+
+  useEffect(() => {
+    if (tab !== "chat" || invalidId) return;
+    setChatLoadFailed(false);
+    void api
+      .listChat(lectureId)
+      .then((rows) => {
+        setChat(rows);
+        setChatLoadFailed(false);
+      })
+      .catch(() => setChatLoadFailed(true));
+  }, [tab, lectureId, invalidId]);
 
   useEffect(() => {
     if (lecture?.status !== "processing") {
@@ -92,12 +130,6 @@ function LectureInner() {
       if (pollRef.current) clearTimeout(pollRef.current);
     };
   }, [lecture?.status, load]);
-
-  useEffect(() => {
-    if (tab === "chat") {
-      void api.listChat(lectureId).then(setChat).catch((e) => setError(e.message));
-    }
-  }, [tab, lectureId]);
 
   useEffect(() => {
     if (
@@ -186,8 +218,8 @@ function LectureInner() {
         id: Date.now() + 1,
         role: "assistant",
         content:
-          "Сейчас не удалось получить ответ от сервера. Откройте вкладку «Конспект» — там уже есть материалы лекции. " +
-          "Попробуйте задать вопрос ещё раз через минуту.",
+          "Сейчас нет связи с сервером. Откройте вкладку «Конспект» — там уже есть материалы лекции. " +
+          "Когда интернет вернётся, задайте вопрос ещё раз.",
         exam_mode: examMode,
         created_at: new Date().toISOString(),
       };
@@ -198,13 +230,29 @@ function LectureInner() {
   }
 
   if (!lecture) {
+    if (loadFailed) {
+      return (
+        <AppShell>
+          <NetworkStub
+            variant={isNetworkError(loadFailed) ? networkErrorVariant(loadFailed) : "empty"}
+            message={
+              isNetworkError(loadFailed)
+                ? undefined
+                : error || (invalidId ? "Лекция не найдена" : "Не удалось загрузить лекцию")
+            }
+            onRetry={invalidId ? undefined : retryLoad}
+          />
+        </AppShell>
+      );
+    }
+
     return (
       <AppShell>
         <div className="space-y-3 animate-fade-in">
           <div className="skeleton h-8 w-48" />
           <div className="skeleton h-40 w-full" />
           <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
-            {error || (invalidId ? "Лекция не найдена" : "Загрузка лекции…")}
+            Загрузка лекции…
           </p>
         </div>
       </AppShell>
@@ -294,27 +342,33 @@ function LectureInner() {
       </FadeIn>
 
       {lecture.enrichment_notice ? (
-        <div
-          className="mb-4 animate-fade-in rounded-[10px] px-4 py-3 text-sm"
-          style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-        >
-          {lecture.enrichment_notice}
-        </div>
+        <TextReveal contentKey={lecture.enrichment_notice}>
+          <div
+            className="mb-4 rounded-[10px] px-4 py-3 text-sm"
+            style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+          >
+            {lecture.enrichment_notice}
+          </div>
+        </TextReveal>
       ) : null}
 
       {success ? (
-        <div
-          className="mb-4 animate-toast rounded-[10px] px-4 py-3 text-sm"
-          style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-        >
-          {success}
-        </div>
+        <TextReveal contentKey={success}>
+          <div
+            className="mb-4 rounded-[10px] px-4 py-3 text-sm"
+            style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+          >
+            {success}
+          </div>
+        </TextReveal>
       ) : null}
 
       {error ? (
-        <p className="mb-4 animate-toast text-sm" style={{ color: "var(--danger)" }}>
-          {error}
-        </p>
+        <TextReveal contentKey={error}>
+          <p className="mb-4 text-sm" style={{ color: "var(--danger)" }}>
+            {error}
+          </p>
+        </TextReveal>
       ) : null}
 
       <div
@@ -437,21 +491,34 @@ function LectureInner() {
               </label>
             </div>
             <div className="flex-1 space-y-3 overflow-y-auto overscroll-contain p-3 sm:p-4">
+              {chatLoadFailed ? (
+                <NetworkStub
+                  compact
+                  variant="network"
+                  onRetry={() => {
+                    setChatLoadFailed(false);
+                    void api
+                      .listChat(lectureId)
+                      .then(setChat)
+                      .catch(() => setChatLoadFailed(true));
+                  }}
+                />
+              ) : null}
               {chat.map((m) => (
                 <div
                   key={m.id}
-                  className="max-w-[92%] rounded-[12px] px-3 py-2.5 text-sm animate-fade-up sm:max-w-[85%]"
+                  className="animate-chat-in max-w-[92%] rounded-[12px] px-3 py-2.5 text-sm sm:max-w-[85%]"
                   style={{
                     marginLeft: m.role === "user" ? "auto" : 0,
                     background: m.role === "user" ? "var(--accent-soft)" : "var(--bg-soft)",
                     color: "var(--fg)",
                   }}
                 >
-                  <MarkdownNotes content={m.content} />
+                  <MarkdownNotes content={m.content} animate={false} />
                 </div>
               ))}
-              {!chat.length ? (
-                <div className="space-y-3">
+              {!chat.length && !chatLoadFailed ? (
+                <div className="animate-text-in space-y-3">
                   <p className="text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
                     Спросите по материалам этой лекции — ответ только из вашего конспекта.
                   </p>
@@ -464,7 +531,7 @@ function LectureInner() {
                       <button
                         key={hint}
                         type="button"
-                        className="rounded-full px-3 py-1.5 text-xs transition-colors"
+                        className="pressable rounded-full px-3 py-1.5 text-xs"
                         style={{
                           background: "var(--bg-soft)",
                           color: "var(--fg-muted)",
@@ -480,7 +547,7 @@ function LectureInner() {
               ) : null}
               {busy ? (
                 <div
-                  className="max-w-[85%] rounded-[12px] px-3 py-2.5 text-sm animate-fade-up"
+                  className="animate-chat-in max-w-[85%] rounded-[12px] px-3 py-2.5 text-sm"
                   style={{ background: "var(--bg-soft)", color: "var(--fg-muted)" }}
                 >
                   <span

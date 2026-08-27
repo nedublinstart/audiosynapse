@@ -326,3 +326,18 @@ export const api = {
 };
 
 export { ApiError };
+
+export function isNetworkError(err: unknown): boolean {
+  if (err instanceof ApiError) {
+    return err.status === 0 || /сеть|соединен|timeout|время/i.test(err.message);
+  }
+  if (err instanceof DOMException && err.name === "AbortError") return true;
+  if (err instanceof TypeError) return true;
+  return false;
+}
+
+export function networkErrorVariant(err: unknown): "network" | "timeout" {
+  if (err instanceof ApiError && /время|timeout/i.test(err.message)) return "timeout";
+  if (err instanceof DOMException && err.name === "AbortError") return "timeout";
+  return "network";
+}
