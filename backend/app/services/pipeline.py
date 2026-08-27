@@ -173,7 +173,7 @@ async def run_lecture_pipeline(lecture_id: int) -> None:
             lecture,
             stage=ProcessingStage.generating_notes,
             progress=60,
-            message="Собираем развёрнутый конспект Cornell + Фейнман…",
+            message="Собираем полный конспект без урезания содержания…",
         )
 
         notes, engine = await ai.generate_notes(

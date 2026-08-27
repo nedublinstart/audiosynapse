@@ -4,9 +4,9 @@ import { CheckCircle2, Circle, Loader2 } from "lucide-react";
 
 const PIPELINE_STEPS = [
   { id: "queued", label: "Подготовка", hint: "Проверяем файл и ставим в очередь" },
-  { id: "transcribing", label: "Расшифровка речи", hint: "Whisper слушает лекцию по сегментам" },
-  { id: "analyzing", label: "Анализ содержания", hint: "Извлекаем темы и термины" },
-  { id: "generating_notes", label: "Сборка конспекта", hint: "Cornell + Фейнман + Bloom" },
+  { id: "transcribing", label: "Расшифровка речи", hint: "Whisper medium · русский + EN-термины · полное покрытие" },
+  { id: "analyzing", label: "Анализ содержания", hint: "Достаём все темы и определения без урезания" },
+  { id: "generating_notes", label: "Сборка конспекта", hint: "Максимально полный учебный текст, без воды" },
   { id: "finalizing", label: "Финализация", hint: "Сохраняем результат" },
 ] as const;
 

@@ -69,7 +69,9 @@ API_PROXY_TARGET=http://127.0.0.1:8787 npm run dev
 ### Распознавание речи
 
 Локально через [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — интернет не нужен,
-таймкоды `[MM:SS]` расставляются автоматически. Модель (`WHISPER_MODEL`, по умолчанию `base`)
+таймкоды `[MM:SS]` расставляются автоматически. Модель (`WHISPER_MODEL`, по умолчанию `medium`, язык `ru`)
+приоритетно расшифровывает русский с сохранением английских терминов; покрытие аудио проверяется
+повторными проходами, чтобы ничего не потерять.
 скачивается при первой расшифровке. Альтернатива — `AI_TRANSCRIBE_MODEL` через свой endpoint
 (например `whisper-large-v3` на Groq).
 
@@ -84,7 +86,8 @@ API_PROXY_TARGET=http://127.0.0.1:8787 npm run dev
 | `AI_TIMEOUT_SECONDS` | Таймаут одной попытки, по умолчанию 45 |
 | `AI_MAX_ATTEMPTS` | Сколько бесплатных провайдеров пробовать, по умолчанию 8 |
 | `AI_DISABLE_G4F` | `true` — использовать только свой endpoint |
-| `WHISPER_MODEL` | Локальная модель STT: `tiny`/`base`/`small`/`medium` |
+| `WHISPER_MODEL` | Локальная модель STT: `tiny`/`base`/`small`/`medium`/`large-v3` (default: `medium`) |
+| `WHISPER_LANGUAGE` | Приоритетный язык: `ru` (EN-термины сохраняются) |
 | `G4F_PROVIDERS` | Закрепить конкретных провайдеров (по умолчанию пусто = авто) |
 | `SECRET_KEY` | JWT secret |
 | `NEXT_PUBLIC_API_URL` | Пусто = same-origin `/api` proxy |

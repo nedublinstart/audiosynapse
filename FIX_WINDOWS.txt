@@ -144,7 +144,9 @@ AI_MODEL=deepseek/deepseek-chat-v3.1:free
 
 Хочешь точнее (но медленнее) — в backend\.env поменяй:
 
-WHISPER_MODEL=small      (варианты: tiny, base, small, medium)
+WHISPER_MODEL=medium     (варианты: tiny, base, small, medium, large-v3)
+WHISPER_LANGUAGE=ru      (приоритет русский; английские термины сохраняются)
+WHISPER_BEAM_SIZE=5
 
 Поддерживаемые форматы аудио:
   mp3, wav, m4a, ogg, opus, aac, flac, wma, amr, mp4, webm, 3gp, mkv

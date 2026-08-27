@@ -416,6 +416,9 @@ def transcription_status() -> dict:
         "api_model": settings.ai_transcribe_model or None,
         "local_whisper": _faster_whisper_available(),
         "local_whisper_model": settings.whisper_model,
+        "language": settings.whisper_language or "auto",
+        "beam_size": settings.whisper_beam_size,
+        "prefer_local": settings.whisper_prefer_local,
     }
 
 
@@ -449,96 +452,198 @@ class Transcript:
 
 
 _whisper_model = None
+_whisper_model_name: str | None = None
 
 
 def _load_whisper():
-    global _whisper_model
-    if _whisper_model is None:
+    global _whisper_model, _whisper_model_name
+    if _whisper_model is None or _whisper_model_name != settings.whisper_model:
         from faster_whisper import WhisperModel
 
-        logger.info("loading faster-whisper model %s", settings.whisper_model)
+        logger.info(
+            "loading faster-whisper model=%s device=%s compute=%s",
+            settings.whisper_model,
+            settings.whisper_device,
+            settings.whisper_compute_type,
+        )
         _whisper_model = WhisperModel(
             settings.whisper_model,
             device=settings.whisper_device,
             compute_type=settings.whisper_compute_type,
         )
+        _whisper_model_name = settings.whisper_model
     return _whisper_model
+
+
+def _stamp(seconds: float) -> str:
+    total = max(0, int(seconds))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
 
 
 def _decode(
     model,
     audio_path: Path,
     *,
+    language: str | None,
     use_vad: bool,
     on_progress=None,
-) -> tuple[str, int | None, float]:
-    # condition_on_previous_text=False stops the repetition loops Whisper falls
-    # into on lecture audio; extra detection segments avoid picking a wrong
-    # language from a two-word greeting at the start.
-    options = {
+) -> tuple[str, int | None, float, str | None]:
+    """
+    High-coverage lecture transcription.
+    Returns (text, duration_seconds, coverage_ratio, detected_language).
+    """
+    # Thresholds tuned for completeness (prefer keeping speech over skipping).
+    options: dict = {
+        "task": "transcribe",
         "beam_size": max(1, settings.whisper_beam_size),
+        "best_of": max(1, settings.whisper_beam_size),
+        "patience": 1.0,
+        "temperature": 0.0,
         "condition_on_previous_text": False,
-        "language": settings.whisper_language or None,
-        "language_detection_segments": 3,
+        "word_timestamps": False,
+        "language": language or None,
+        "language_detection_segments": 4,
+        "language_detection_threshold": 0.35,
+        # Keep borderline speech instead of marking as silence/noise.
+        "no_speech_threshold": 0.45,
+        "log_prob_threshold": -1.15,
+        "compression_ratio_threshold": 2.6,
+        "vad_filter": bool(use_vad),
     }
+    if settings.whisper_initial_prompt.strip():
+        options["initial_prompt"] = settings.whisper_initial_prompt.strip()
     if use_vad:
-        options["vad_filter"] = True
-        # Defaults clip real speech in lecture recordings.
-        options["vad_parameters"] = {"min_silence_duration_ms": 1000, "speech_pad_ms": 400}
-    else:
-        options["vad_filter"] = False
+        options["vad_parameters"] = {
+            "min_silence_duration_ms": 1200,
+            "speech_pad_ms": 500,
+            "threshold": 0.35,
+        }
 
-    segments, info = model.transcribe(str(audio_path), **options)
-    parts = []
-    covered = 0.0
+    segments_iter, info = model.transcribe(str(audio_path), **options)
     duration = float(getattr(info, "duration", 0) or 0) or None
     duration_int = int(duration) if duration else None
-    for seg in segments:
-        stamp = time.strftime("%M:%S", time.gmtime(max(0, seg.start)))
-        parts.append(f"[{stamp}] {seg.text.strip()}")
-        covered += max(0.0, seg.end - seg.start)
+    detected = getattr(info, "language", None)
+
+    parts: list[str] = []
+    covered = 0.0
+    for seg in segments_iter:
+        text = (seg.text or "").strip()
+        if not text:
+            continue
+        parts.append(f"[{_stamp(seg.start)}] {text}")
+        covered += max(0.0, float(seg.end) - float(seg.start))
         if on_progress and duration and duration > 0:
             try:
                 on_progress(
                     min(0.99, covered / duration),
-                    f"Расшифровка… {int(covered // 60):02d}:{int(covered % 60):02d} / "
-                    f"{int(duration // 60):02d}:{int(duration % 60):02d}",
+                    f"Расшифровка… {_stamp(covered)} / {_stamp(duration)}",
                 )
             except Exception:  # noqa: BLE001
                 pass
-    coverage = covered / duration if duration else 1.0
+
+    text = "\n".join(parts).strip()
+    coverage = (covered / duration) if duration else (1.0 if text else 0.0)
     if on_progress:
         try:
-            on_progress(1.0, "Расшифровка завершена")
+            on_progress(1.0, f"Готово: {len(text)} симв., покрытие ~{int(coverage * 100)}%")
         except Exception:  # noqa: BLE001
             pass
-    return "\n".join(parts).strip(), duration_int, coverage
+    return text, duration_int, coverage, detected
+
+
+def _pick_best_transcript(candidates: list[tuple[str, int | None, float, str]]) -> tuple[str, int | None]:
+    """Choose the longest high-coverage transcript (never prefer a truncated one)."""
+    if not candidates:
+        return "", None
+    scored = []
+    for text, duration, coverage, label in candidates:
+        if not text:
+            continue
+        # Prefer coverage, then length.
+        scored.append((coverage, len(text), text, duration, label))
+    if not scored:
+        return "", None
+    scored.sort(reverse=True)
+    best = scored[0]
+    logger.info(
+        "transcript pick: %s coverage=%.0f%% chars=%s",
+        best[4],
+        best[0] * 100,
+        best[1],
+    )
+    return best[2], best[3]
 
 
 def _transcribe_local(audio_path: Path, on_progress=None) -> tuple[str, int | None]:
+    """
+    Multi-pass local transcription for max content retention.
+    Priority language: Russian; English terms preserved via initial_prompt.
+    """
     model = _load_whisper()
-    use_vad = settings.whisper_vad
-    try:
-        text, duration, coverage = _decode(model, audio_path, use_vad=use_vad, on_progress=on_progress)
-    except Exception as exc:  # noqa: BLE001
-        if not use_vad:
-            raise
-        logger.info("whisper with VAD failed (%s); retrying without VAD", exc)
-        text, duration, coverage = _decode(model, audio_path, use_vad=False, on_progress=on_progress)
-        return text, duration
+    primary_lang = (settings.whisper_language or "ru").strip() or "ru"
+    candidates: list[tuple[str, int | None, float, str]] = []
 
-    # Low coverage means whole passages were skipped (VAD or language misdetect).
-    if use_vad and coverage < 0.6:
-        logger.info("transcript covers only %.0f%% of audio; retrying without VAD", coverage * 100)
+    # Pass 1: Russian-first (or configured language), no VAD — fullest capture.
+    if on_progress:
         try:
-            alt_text, alt_duration, alt_coverage = _decode(
-                model, audio_path, use_vad=False, on_progress=on_progress
+            on_progress(0.02, f"Модель {settings.whisper_model}, язык: {primary_lang}…")
+        except Exception:  # noqa: BLE001
+            pass
+    text, duration, coverage, detected = _decode(
+        model,
+        audio_path,
+        language=primary_lang,
+        use_vad=False,
+        on_progress=on_progress,
+    )
+    candidates.append((text, duration, coverage, f"{primary_lang}/no-vad"))
+    logger.info(
+        "whisper pass %s: chars=%s coverage=%.0f%% detected=%s",
+        primary_lang,
+        len(text),
+        coverage * 100,
+        detected,
+    )
+
+    # Pass 2: if coverage weak, retry auto-detect (helps EN-heavy lectures).
+    if coverage < 0.82 or len(text) < 80:
+        if on_progress:
+            try:
+                on_progress(0.05, "Дополнительный проход: автоопределение языка…")
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            t2, d2, c2, det2 = _decode(
+                model,
+                audio_path,
+                language=None,
+                use_vad=False,
+                on_progress=on_progress,
             )
-            if alt_coverage > coverage or len(alt_text) > len(text):
-                return alt_text, alt_duration or duration
+            candidates.append((t2, d2 or duration, c2, f"auto/{det2 or '?'}"))
+            logger.info("whisper pass auto: chars=%s coverage=%.0f%% detected=%s", len(t2), c2 * 100, det2)
         except Exception as exc:  # noqa: BLE001
-            logger.info("retry without VAD failed: %s", exc)
-    return text, duration
+            logger.info("auto-language pass failed: %s", exc)
+
+    # Pass 3: optional VAD only if user enabled and we still look thin.
+    if settings.whisper_vad:
+        try:
+            t3, d3, c3, _ = _decode(
+                model,
+                audio_path,
+                language=primary_lang,
+                use_vad=True,
+                on_progress=on_progress,
+            )
+            candidates.append((t3, d3 or duration, c3, f"{primary_lang}/vad"))
+        except Exception as exc:  # noqa: BLE001
+            logger.info("vad pass failed: %s", exc)
+
+    return _pick_best_transcript(candidates)
 
 
 def transcribe(
@@ -547,37 +652,70 @@ def transcribe(
     *,
     on_progress=None,
 ) -> Transcript:
-    """Transcribe audio; raises LLMUnavailable when no engine works."""
+    """Transcribe audio with maximum content retention; raises LLMUnavailable."""
     started = time.perf_counter()
     errors: list[str] = []
+    local_result: Transcript | None = None
+    api_result: Transcript | None = None
 
-    if _openai_configured() and settings.ai_transcribe_model:
-        try:
-            text = _transcribe_via_api(audio_path, filename)
-            if len(text) > 40:
-                logger.info("transcribe via API in %.1fs", time.perf_counter() - started)
-                return Transcript(text, f"api:{settings.ai_transcribe_model}")
-            errors.append("api: too short")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("API transcription failed: %s", exc)
-            errors.append(f"api: {type(exc).__name__}")
-
-    if _faster_whisper_available():
+    # Local first when preferred (complete lecture coverage on device).
+    if settings.whisper_prefer_local and _faster_whisper_available():
         try:
             text, duration = _transcribe_local(audio_path, on_progress=on_progress)
             if len(text) > 20:
+                local_result = Transcript(
+                    text, f"faster-whisper:{settings.whisper_model}", duration
+                )
                 logger.info(
-                    "transcribe via faster-whisper in %.1fs (%s chars)",
+                    "transcribe local in %.1fs (%s chars)",
                     time.perf_counter() - started,
                     len(text),
                 )
-                return Transcript(text, f"faster-whisper:{settings.whisper_model}", duration)
-            errors.append("local whisper: empty result")
+            else:
+                errors.append("local whisper: empty result")
         except Exception as exc:  # noqa: BLE001
             logger.warning("local whisper failed: %s", exc)
             errors.append(f"local whisper: {type(exc).__name__}: {str(exc)[:120]}")
 
-    # Last try: multimodal free provider (works only on some g4f builds).
+    if _openai_configured() and settings.ai_transcribe_model:
+        try:
+            if on_progress and not local_result:
+                on_progress(0.1, "Облачная транскрибация…")
+            text = _transcribe_via_api(audio_path, filename)
+            if len(text) > 40:
+                api_result = Transcript(text, f"api:{settings.ai_transcribe_model}")
+                logger.info("transcribe via API in %.1fs (%s chars)", time.perf_counter() - started, len(text))
+            else:
+                errors.append("api: too short")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("API transcription failed: %s", exc)
+            errors.append(f"api: {type(exc).__name__}")
+
+    # If local was skipped (prefer_local false), try it now.
+    if local_result is None and _faster_whisper_available():
+        try:
+            text, duration = _transcribe_local(audio_path, on_progress=on_progress)
+            if len(text) > 20:
+                local_result = Transcript(
+                    text, f"faster-whisper:{settings.whisper_model}", duration
+                )
+            else:
+                errors.append("local whisper: empty result")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("local whisper failed: %s", exc)
+            errors.append(f"local whisper: {type(exc).__name__}: {str(exc)[:120]}")
+
+    # Prefer the longer complete transcript.
+    if local_result and api_result:
+        if len(local_result.text) >= len(api_result.text) * 0.9:
+            return local_result
+        return api_result
+    if local_result:
+        return local_result
+    if api_result:
+        return api_result
+
+    # Last try: multimodal free provider.
     try:
         from g4f.client import Client
         from g4f.Provider import Gemini
@@ -590,8 +728,10 @@ def transcribe(
                     {
                         "role": "user",
                         "content": (
-                            "Сделай полную транскрибацию лекции на языке оригинала. "
-                            "Добавляй таймкоды [MM:SS] каждые 30–60 секунд. Верни только транскрипт."
+                            "Сделай ПОЛНУЮ транскрибацию лекции на языке оригинала "
+                            "(русский приоритет, английские термины сохрани). "
+                            "Не сокращай. Таймкоды [MM:SS] каждые 30–60 секунд. "
+                            "Верни только транскрипт."
                         ),
                     }
                 ],
@@ -614,7 +754,7 @@ def preload_whisper() -> None:
         return
     try:
         _load_whisper()
-        logger.info("whisper model preloaded")
+        logger.info("whisper model preloaded: %s", settings.whisper_model)
     except Exception as exc:  # noqa: BLE001
         logger.warning("whisper preload failed: %s", exc)
 

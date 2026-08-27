@@ -28,22 +28,30 @@ class Settings(BaseSettings):
     ai_probe_workers: int = 6
     ai_max_attempts: int = 8
     ai_cache_seconds: float = 3600.0
-    ai_notes_timeout_seconds: float = 120.0
+    ai_notes_timeout_seconds: float = 150.0
     transcribe_timeout_seconds: float = 600.0
 
     # Notes quality: single-pass below this size; longer lectures use chunked extraction.
-    notes_single_pass_max_chars: int = 32_000
-    notes_chunk_size: int = 12_000
+    notes_single_pass_max_chars: int = 48_000
+    notes_chunk_size: int = 14_000
 
-    # Local speech-to-text — "small" for conference-grade Russian lecture accuracy.
-    whisper_model: str = "small"
-    whisper_beam_size: int = 3
-    # Empty = autodetect. Set e.g. "ru" or "en" when detection picks the wrong one.
-    whisper_language: str = ""
-    # VAD is ~2x faster but sometimes silently drops speech, so it is opt-in.
+    # Local speech-to-text (faster-whisper). "medium" — качество для русских лекций.
+    whisper_model: str = "medium"
+    whisper_beam_size: int = 5
+    # Primary language: Russian. English terms still come through correctly.
+    # Empty = auto-detect; "ru" preferred for typical university lectures.
+    whisper_language: str = "ru"
+    # VAD can silently drop speech — keep off for completeness.
     whisper_vad: bool = False
     whisper_device: str = "auto"
     whisper_compute_type: str = "int8"
+    # Prefer complete local transcript over short API replies when both exist.
+    whisper_prefer_local: bool = True
+    whisper_initial_prompt: str = (
+        "Лекция на русском языке. Возможны английские термины и аббревиатуры: "
+        "API, CPU, GPU, dataset, gradient, neural network, machine learning, "
+        "deep learning, overfitting, backpropagation, transformer, embedding."
+    )
 
     # Set to true to use only your own AI_BASE_URL endpoint.
     ai_disable_g4f: bool = False
