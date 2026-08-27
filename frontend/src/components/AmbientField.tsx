@@ -1,6 +1,6 @@
 "use client";
 
-/** Soft aurora field behind the whole app — calm, not neon circus. */
+/** Near-invisible aurora — felt as atmosphere, not seen as animation. */
 export function AmbientField() {
   return (
     <div className="ambient-field" aria-hidden>

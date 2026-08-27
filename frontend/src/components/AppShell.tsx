@@ -24,15 +24,15 @@ export function AppShell({
   return (
     <div className="min-h-dvh pb-[env(safe-area-inset-bottom)]">
       <header
-        className="sticky top-0 z-30 border-b animate-blur-up"
+        className="sticky top-0 z-30 border-b animate-fade-in"
         style={{
-          animationDuration: "0.7s",
+          animationDuration: "0.28s",
           borderColor: "color-mix(in srgb, var(--border) 80%, transparent)",
           background: "color-mix(in srgb, var(--bg) 68%, transparent)",
           backdropFilter: "blur(18px) saturate(1.25)",
           WebkitBackdropFilter: "blur(18px) saturate(1.25)",
           paddingTop: "env(safe-area-inset-top)",
-          transition: "background 0.4s var(--ease-expo), border-color 0.4s var(--ease-expo)",
+          transition: "background 0.25s var(--ease-expo), border-color 0.25s var(--ease-expo)",
         }}
       >
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 safe-px py-3">

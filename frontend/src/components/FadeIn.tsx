@@ -11,20 +11,16 @@ import clsx from "clsx";
 
 type FadeVariant = "fade-up" | "fade-in" | "fade-scale" | "blur-up" | "hero";
 
-const VARIANT_CLASS: Record<FadeVariant, string> = {
-  "fade-up": "animate-fade-up",
-  "fade-in": "animate-fade-in",
-  "fade-scale": "animate-fade-scale",
-  "blur-up": "animate-blur-up",
-  hero: "animate-hero-reveal",
-};
-
+/**
+ * Rule #1: effects must be unnoticed — only guide attention.
+ * All variants resolve to a short opacity fade.
+ */
 export function FadeIn({
   children,
   className,
   delay = 0,
-  duration = 900,
-  variant = "fade-up",
+  duration = 280,
+  variant = "fade-in",
   as: Tag = "div",
   when = true,
 }: {
@@ -39,6 +35,7 @@ export function FadeIn({
   const ref = useRef<HTMLElement>(null);
   const [active, setActive] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  void variant;
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -67,7 +64,7 @@ export function FadeIn({
     };
 
     const rect = el.getBoundingClientRect();
-    const mostlyVisible = rect.top < window.innerHeight * 0.94;
+    const mostlyVisible = rect.top < window.innerHeight * 0.98;
 
     if (mostlyVisible) {
       const id = window.requestAnimationFrame(() => start());
@@ -84,7 +81,7 @@ export function FadeIn({
           observer.disconnect();
         }
       },
-      { threshold: 0.08, rootMargin: "0px 0px -4% 0px" },
+      { threshold: 0.05, rootMargin: "0px 0px -2% 0px" },
     );
     observer.observe(el);
     return () => {
@@ -94,15 +91,15 @@ export function FadeIn({
   }, [when, reduceMotion]);
 
   const style: CSSProperties = {
-    animationDelay: active ? `${delay}ms` : undefined,
-    animationDuration: reduceMotion ? undefined : `${duration}ms`,
+    animationDelay: active ? `${Math.min(delay, 120)}ms` : undefined,
+    animationDuration: reduceMotion ? undefined : `${Math.min(duration, 320)}ms`,
     opacity: active || reduceMotion ? undefined : 0,
   };
 
   return (
     <Tag
       ref={ref as never}
-      className={clsx(VARIANT_CLASS[variant], className)}
+      className={clsx("animate-fade-in", className)}
       style={style}
     >
       {children}

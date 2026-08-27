@@ -19,7 +19,7 @@ export default function HomePage() {
   return (
     <div className="relative min-h-dvh overflow-hidden">
       <div className="relative mx-auto flex min-h-dvh max-w-xl flex-col justify-center safe-px py-16 sm:py-20">
-        <FadeIn variant="fade-up" duration={800}>
+        <FadeIn>
           <div className="mb-8 flex items-center gap-3">
             <span className="brand-mark !h-11 !w-11 !rounded-[12px] !p-1.5">
               <SynapseMark size={32} priority />
@@ -33,7 +33,7 @@ export default function HomePage() {
           </div>
         </FadeIn>
 
-        <FadeIn delay={80} variant="fade-up" duration={800}>
+        <FadeIn delay={40}>
           <p
             className="mb-8 max-w-md text-[1.05rem] leading-relaxed"
             style={{ color: "var(--fg-muted)" }}
@@ -42,7 +42,7 @@ export default function HomePage() {
           </p>
         </FadeIn>
 
-        <FadeIn delay={140} variant="fade-up" duration={800}>
+        <FadeIn delay={80}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link href="/login" className="btn-primary sm:w-auto">
               Войти

@@ -7,7 +7,6 @@ import { BookOpen, ChevronRight, Layers, Plus, Sparkles, Wand2 } from "lucide-re
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FadeIn } from "@/components/FadeIn";
-import { MagneticSurface } from "@/components/MagneticSurface";
 import { MonthCalendar } from "@/components/MonthCalendar";
 import { SubjectComposer } from "@/components/SubjectComposer";
 import { SubjectImportMaster } from "@/components/SubjectImportMaster";
@@ -73,7 +72,7 @@ function DashboardInner() {
 
   return (
     <AppShell title="Учебный процесс">
-      <FadeIn variant="blur-up" duration={1000}>
+      <FadeIn>
         <section className="dashboard-hero panel mb-6 p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -119,7 +118,7 @@ function DashboardInner() {
         </p>
       ) : null}
 
-      <FadeIn delay={60} variant="fade-up" duration={820}>
+      <FadeIn>
         <div className="mb-6">
           <MonthCalendar
             lectures={calendarLectures}
@@ -130,7 +129,7 @@ function DashboardInner() {
         </div>
       </FadeIn>
 
-      <FadeIn delay={100} variant="fade-up">
+      <FadeIn>
         <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h3 className="page-title text-xl sm:text-2xl">Предметы</h3>
@@ -160,7 +159,7 @@ function DashboardInner() {
       </FadeIn>
 
       {mode === "create" ? (
-        <FadeIn variant="fade-scale" duration={680}>
+        <FadeIn>
           <SubjectComposer
             onCancel={() => setMode("none")}
             onCreated={(subject) => {
@@ -174,7 +173,7 @@ function DashboardInner() {
       ) : null}
 
       {mode === "import" ? (
-        <FadeIn variant="fade-scale" duration={680}>
+        <FadeIn>
           <SubjectImportMaster
             onCancel={() => setMode("none")}
             onImported={(created) => {
@@ -193,96 +192,88 @@ function DashboardInner() {
       {!loaded ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((i) => (
-            <FadeIn key={i} delay={140 + i * 45} variant="fade-in" duration={620}>
-              <div className="panel h-[9.5rem] p-4 sm:p-5">
-                <div className="skeleton mb-3 h-4 w-1/2" />
-                <div className="skeleton mb-2 h-3 w-full" />
-                <div className="skeleton h-3 w-2/3" />
-              </div>
-            </FadeIn>
+            <div key={i} className="panel h-[9.5rem] p-4 sm:p-5">
+              <div className="skeleton mb-3 h-4 w-1/2" />
+              <div className="skeleton mb-2 h-3 w-full" />
+              <div className="skeleton h-3 w-2/3" />
+            </div>
           ))}
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {subjects.map((subject, i) => (
-            <FadeIn key={subject.id} delay={120 + i * 70} variant="blur-up" duration={950}>
-              <MagneticSurface className="h-full">
-                <Link
-                  href={`/app/subjects/${subject.id}`}
-                  className="subject-card panel block h-full p-4 sm:p-5"
-                  style={{ "--subject-accent": subject.color } as CSSProperties}
-                >
-                  <span className="subject-card-glow" aria-hidden />
-                  <div className="relative mb-3 flex items-start justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <span
-                        className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{
-                          background: subject.color,
-                          boxShadow: `0 0 0 2px color-mix(in srgb, ${subject.color} 35%, transparent)`,
-                        }}
-                      />
-                      <h3 className="truncate font-medium tracking-tight">{subject.name}</h3>
-                    </div>
-                    <ChevronRight
-                      size={16}
-                      className="subject-card-arrow shrink-0"
-                      style={{ color: "var(--accent)" }}
-                    />
-                  </div>
-                  <p
-                    className="relative mb-4 line-clamp-2 min-h-[2.75rem] text-sm leading-relaxed"
-                    style={{ color: "var(--fg-muted)" }}
-                  >
-                    {subject.description || "Можно сразу добавлять лекции"}
-                  </p>
-                  <div
-                    className="relative flex items-center justify-between gap-2 border-t pt-3 text-xs"
+          {subjects.map((subject) => (
+            <Link
+              key={subject.id}
+              href={`/app/subjects/${subject.id}`}
+              className="subject-card panel block h-full p-4 sm:p-5"
+              style={{ "--subject-accent": subject.color } as CSSProperties}
+            >
+              <div className="relative mb-3 flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span
+                    className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"
                     style={{
-                      borderColor: "color-mix(in srgb, var(--border) 65%, transparent)",
-                      color: "var(--fg-muted)",
+                      background: subject.color,
+                      boxShadow: `0 0 0 2px color-mix(in srgb, ${subject.color} 28%, transparent)`,
                     }}
-                  >
-                    <span className="font-medium" style={{ color: "var(--fg)" }}>
-                      {subject.lecture_count} {lectureLabel(subject.lecture_count)}
-                    </span>
-                    <span>Без расписания</span>
-                  </div>
-                </Link>
-              </MagneticSurface>
-            </FadeIn>
-          ))}
-          {!subjects.length && mode === "none" ? (
-            <FadeIn delay={160} variant="fade-scale" className="sm:col-span-2 lg:col-span-3">
-              <div
-                className="panel flex flex-col items-center justify-center px-6 py-12 text-center sm:py-14"
+                  />
+                  <h3 className="truncate font-medium tracking-tight">{subject.name}</h3>
+                </div>
+                <ChevronRight
+                  size={16}
+                  className="subject-card-arrow shrink-0"
+                  style={{ color: "var(--accent)" }}
+                />
+              </div>
+              <p
+                className="relative mb-4 line-clamp-2 min-h-[2.75rem] text-sm leading-relaxed"
                 style={{ color: "var(--fg-muted)" }}
               >
-                <div
-                  className="mb-4 flex h-12 w-12 items-center justify-center rounded-[14px]"
-                  style={{
-                    background: "var(--accent-soft)",
-                    color: "var(--accent)",
-                  }}
-                >
-                  <Sparkles size={22} />
-                </div>
-                <p className="mb-1 text-base font-medium" style={{ color: "var(--fg)" }}>
-                  Начните с предметов
-                </p>
-                <p className="max-w-sm text-sm leading-relaxed">
-                  Добавьте один предмет или вставьте весь список — расписание и время не нужны.
-                </p>
-                <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-                  <button type="button" className="btn-outline sm:!w-auto" onClick={() => setMode("import")}>
-                    <Wand2 size={16} /> Импорт через ИИ
-                  </button>
-                  <button type="button" className="btn-primary sm:!w-auto" onClick={() => setMode("create")}>
-                    <Plus size={16} /> Добавить предмет
-                  </button>
-                </div>
+                {subject.description || "Можно сразу добавлять лекции"}
+              </p>
+              <div
+                className="relative flex items-center justify-between gap-2 border-t pt-3 text-xs"
+                style={{
+                  borderColor: "color-mix(in srgb, var(--border) 65%, transparent)",
+                  color: "var(--fg-muted)",
+                }}
+              >
+                <span className="font-medium" style={{ color: "var(--fg)" }}>
+                  {subject.lecture_count} {lectureLabel(subject.lecture_count)}
+                </span>
+                <span>Без расписания</span>
               </div>
-            </FadeIn>
+            </Link>
+          ))}
+          {!subjects.length && mode === "none" ? (
+            <div
+              className="panel flex flex-col items-center justify-center px-6 py-12 text-center sm:col-span-2 sm:py-14 lg:col-span-3"
+              style={{ color: "var(--fg-muted)" }}
+            >
+              <div
+                className="mb-4 flex h-12 w-12 items-center justify-center rounded-[14px]"
+                style={{
+                  background: "var(--accent-soft)",
+                  color: "var(--accent)",
+                }}
+              >
+                <Sparkles size={22} />
+              </div>
+              <p className="mb-1 text-base font-medium" style={{ color: "var(--fg)" }}>
+                Начните с предметов
+              </p>
+              <p className="max-w-sm text-sm leading-relaxed">
+                Добавьте один предмет или вставьте весь список — расписание и время не нужны.
+              </p>
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                <button type="button" className="btn-outline sm:!w-auto" onClick={() => setMode("import")}>
+                  <Wand2 size={16} /> Импорт через ИИ
+                </button>
+                <button type="button" className="btn-primary sm:!w-auto" onClick={() => setMode("create")}>
+                  <Plus size={16} /> Добавить предмет
+                </button>
+              </div>
+            </div>
           ) : null}
         </div>
       )}

@@ -70,7 +70,7 @@ function SubjectInner() {
 
   return (
     <AppShell title={subject ? subject.name : "Предмет"}>
-      <FadeIn variant="fade-scale">
+      <FadeIn>
         <div className="dashboard-hero panel mb-6 p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
@@ -106,7 +106,7 @@ function SubjectInner() {
       </FadeIn>
 
       {showForm ? (
-        <FadeIn variant="fade-scale">
+        <FadeIn>
           <form onSubmit={onCreate} className="panel mb-6 grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
             <div>
               <label className="label">Название</label>
@@ -157,8 +157,8 @@ function SubjectInner() {
         </div>
       ) : (
         <div className="space-y-2.5">
-          {lectures.map((lecture, i) => (
-            <FadeIn key={lecture.id} delay={80 + i * 55} variant="fade-up">
+          {lectures.map((lecture) => (
+            <FadeIn key={lecture.id}>
               <Link
                 href={`/app/lectures/${lecture.id}`}
                 className="subject-card panel panel-interactive flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -181,7 +181,7 @@ function SubjectInner() {
             </FadeIn>
           ))}
           {!lectures.length ? (
-            <FadeIn delay={120}>
+            <FadeIn>
               <div className="panel flex flex-col items-center px-6 py-12 text-center">
                 <div
                   className="mb-4 flex h-12 w-12 items-center justify-center rounded-[14px]"
