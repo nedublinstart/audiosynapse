@@ -206,7 +206,7 @@ function DashboardInner() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {subjects.map((subject, i) => (
             <FadeIn key={subject.id} delay={120 + i * 70} variant="blur-up" duration={950}>
-              <MagneticSurface strength={6} tilt={3} className="h-full">
+              <MagneticSurface className="h-full">
                 <Link
                   href={`/app/subjects/${subject.id}`}
                   className="subject-card panel block h-full p-4 sm:p-5"
