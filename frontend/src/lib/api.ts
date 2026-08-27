@@ -126,26 +126,46 @@ export function setToken(token: string | null) {
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  isForm = false
+  isForm = false,
+  timeoutMs = 60_000,
 ): Promise<T> {
   const headers = new Headers(options.headers || {});
   if (!isForm) headers.set("Content-Type", "application/json");
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const data = await res.json();
-      detail = data.detail || JSON.stringify(data);
-    } catch {
-      /* ignore */
-    }
-    throw new ApiError(res.status, typeof detail === "string" ? detail : "Request failed");
+  const controller = new AbortController();
+  let timer: number | undefined;
+  if (typeof window !== "undefined" && timeoutMs > 0) {
+    timer = window.setTimeout(() => controller.abort(), timeoutMs);
   }
-  if (res.status === 204) return undefined as T;
-  return res.json();
+
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const data = await res.json();
+        detail = data.detail || JSON.stringify(data);
+      } catch {
+        /* ignore */
+      }
+      throw new ApiError(res.status, typeof detail === "string" ? detail : "Request failed");
+    }
+    if (res.status === 204) return undefined as T;
+    return res.json();
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError(0, "Запрос занял слишком много времени — попробуйте ещё раз");
+    }
+    throw err;
+  } finally {
+    if (timer !== undefined) window.clearTimeout(timer);
+  }
 }
 
 function uploadForm<T>(
@@ -215,10 +235,15 @@ export const api = {
     schedule?: Omit<ScheduleSlot, "id">[];
   }) => request<Subject>("/api/subjects", { method: "POST", body: JSON.stringify(body) }),
   previewSubjectImport: (text: string) =>
-    request<{ engine: string; items: SubjectImportItem[] }>("/api/subjects/import/preview", {
-      method: "POST",
-      body: JSON.stringify({ text }),
-    }),
+    request<{ engine: string; items: SubjectImportItem[] }>(
+      "/api/subjects/import/preview",
+      {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      },
+      false,
+      120_000,
+    ),
   confirmSubjectImport: (items: SubjectImportItem[]) =>
     request<Subject[]>("/api/subjects/import", {
       method: "POST",
@@ -254,20 +279,30 @@ export const api = {
   uploadMaterial: async (lectureId: number, file: File) => {
     const form = new FormData();
     form.append("file", file);
-    return request<Lecture>(`/api/lectures/${lectureId}/materials`, {
-      method: "POST",
-      body: form,
-    }, true);
+    return request<Lecture>(
+      `/api/lectures/${lectureId}/materials`,
+      {
+        method: "POST",
+        body: form,
+      },
+      true,
+      180_000,
+    );
   },
   reprocessLecture: (lectureId: number) =>
     request<Lecture>(`/api/lectures/${lectureId}/reprocess`, { method: "POST" }),
   listChat: (lectureId: number) =>
     request<ChatMessage[]>(`/api/lectures/${lectureId}/chat`),
   chat: (lectureId: number, message: string, exam_mode = false) =>
-    request<ChatMessage>(`/api/lectures/${lectureId}/chat`, {
-      method: "POST",
-      body: JSON.stringify({ message, exam_mode }),
-    }),
+    request<ChatMessage>(
+      `/api/lectures/${lectureId}/chat`,
+      {
+        method: "POST",
+        body: JSON.stringify({ message, exam_mode }),
+      },
+      false,
+      120_000,
+    ),
   suggestions: () => request<ScheduleSuggestion[]>("/api/schedule/suggestions"),
 };
 

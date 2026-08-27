@@ -42,6 +42,8 @@ function LectureInner() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const materialRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const processingSinceRef = useRef<number | null>(null);
+  const [processingStuck, setProcessingStuck] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -64,9 +66,18 @@ function LectureInner() {
   useEffect(() => {
     if (lecture?.status !== "processing") {
       if (pollRef.current) clearTimeout(pollRef.current);
+      processingSinceRef.current = null;
+      setProcessingStuck(false);
       return;
     }
+    if (!processingSinceRef.current) {
+      processingSinceRef.current = Date.now();
+    }
     const tick = () => {
+      const elapsed = Date.now() - (processingSinceRef.current ?? Date.now());
+      if (elapsed > 30 * 60 * 1000) {
+        setProcessingStuck(true);
+      }
       void load();
       pollRef.current = setTimeout(tick, 800);
     };
@@ -160,8 +171,17 @@ function LectureInner() {
       const assistant = await api.chat(lectureId, text, examMode);
       setChat((prev) => [...prev, assistant]);
     } catch (err) {
-      setChat((prev) => prev.filter((m) => m.id !== optimistic.id));
-      setError(err instanceof Error ? err.message : "Ошибка чата");
+      const fallback: ChatMessage = {
+        id: Date.now() + 1,
+        role: "assistant",
+        content:
+          "Сейчас не удалось получить ответ от сервера. Откройте вкладку «Конспект» — там уже есть материалы лекции. " +
+          "Попробуйте задать вопрос ещё раз через минуту.",
+        exam_mode: examMode,
+        created_at: new Date().toISOString(),
+      };
+      setChat((prev) => [...prev, fallback]);
+      setError(err instanceof Error ? err.message : "Ошибка чата — показан запасной ответ");
     } finally {
       setBusy(false);
     }
@@ -319,12 +339,32 @@ function LectureInner() {
         <FadeIn key="notes">
           <article className="panel p-4 sm:p-8">
             {lecture.status === "processing" ? (
-              <ProcessingStatus
-                stage={lecture.processing_stage}
-                progress={lecture.processing_progress}
-                message={lecture.processing_message}
-                audioSizeBytes={lecture.audio_size_bytes}
-              />
+              <>
+                <ProcessingStatus
+                  stage={lecture.processing_stage}
+                  progress={lecture.processing_progress}
+                  message={lecture.processing_message}
+                  audioSizeBytes={lecture.audio_size_bytes}
+                  stuck={processingStuck}
+                />
+                {processingStuck ? (
+                  <div className="mt-6 text-center">
+                    <p className="mb-3 text-sm" style={{ color: "var(--fg-muted)" }}>
+                      Обработка идёт дольше обычного. Можно подождать или перезапустить.
+                    </p>
+                    {lecture.audio_filename ? (
+                      <button
+                        type="button"
+                        className="btn-outline sm:!w-auto"
+                        disabled={busy}
+                        onClick={() => void onReprocess()}
+                      >
+                        <RefreshCw size={16} /> Обработать снова
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
             ) : lecture.status === "needs_clarification" ? (
               <div className="py-10 text-center">
                 <p className="mb-2 text-base font-medium" style={{ color: "var(--warn)" }}>

@@ -93,14 +93,28 @@ def _openai_chat(messages: list[dict], temperature: float) -> str:
         "messages": messages,
         "temperature": temperature,
     }
-    with httpx.Client(timeout=settings.ai_timeout_seconds) as client:
-        r = client.post(url, json=payload, headers=headers)
-        r.raise_for_status()
-        data = r.json()
-    choices = data.get("choices") or []
-    if not choices:
-        raise LLMUnavailable(f"OpenAI-compatible API returned no choices: {str(data)[:200]}")
-    return (choices[0].get("message", {}).get("content") or "").strip()
+    retry_statuses = {429, 502, 503, 504}
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            with httpx.Client(timeout=settings.ai_timeout_seconds) as client:
+                r = client.post(url, json=payload, headers=headers)
+                if r.status_code in retry_statuses and attempt < 2:
+                    time.sleep(1.5 * (attempt + 1))
+                    continue
+                r.raise_for_status()
+                data = r.json()
+            choices = data.get("choices") or []
+            if not choices:
+                raise LLMUnavailable(f"OpenAI-compatible API returned no choices: {str(data)[:200]}")
+            return (choices[0].get("message", {}).get("content") or "").strip()
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(1.0 * (attempt + 1))
+                continue
+            raise
+    raise LLMUnavailable(str(last_exc) if last_exc else "custom API failed")
 
 
 def _g4f_candidates() -> list[tuple[str, str]]:
@@ -646,6 +660,31 @@ def _transcribe_local(audio_path: Path, on_progress=None) -> tuple[str, int | No
     return _pick_best_transcript(candidates)
 
 
+def _transcribe_g4f_multimodal(audio_path: Path) -> str:
+    from g4f.client import Client
+    from g4f.Provider import Gemini
+
+    client = Client(provider=Gemini)
+    with audio_path.open("rb") as audio_file:
+        response = client.chat.completions.create(
+            model="gemini-3.6-flash",
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "Сделай ПОЛНУЮ транскрибацию лекции на языке оригинала "
+                        "(русский приоритет, английские термины сохрани). "
+                        "Не сокращай. Таймкоды [MM:SS] каждые 30–60 секунд. "
+                        "Верни только транскрипт."
+                    ),
+                }
+            ],
+            media=[audio_file],
+            web_search=False,
+        )
+    return (response.choices[0].message.content or "").strip()
+
+
 def transcribe(
     audio_path: Path,
     filename: str,
@@ -661,7 +700,12 @@ def transcribe(
     # Local first when preferred (complete lecture coverage on device).
     if settings.whisper_prefer_local and _faster_whisper_available():
         try:
-            text, duration = _transcribe_local(audio_path, on_progress=on_progress)
+            text, duration = _with_timeout(
+                _transcribe_local,
+                audio_path,
+                on_progress=on_progress,
+                timeout=settings.transcribe_timeout_seconds,
+            )
             if len(text) > 20:
                 local_result = Transcript(
                     text, f"faster-whisper:{settings.whisper_model}", duration
@@ -694,7 +738,12 @@ def transcribe(
     # If local was skipped (prefer_local false), try it now.
     if local_result is None and _faster_whisper_available():
         try:
-            text, duration = _transcribe_local(audio_path, on_progress=on_progress)
+            text, duration = _with_timeout(
+                _transcribe_local,
+                audio_path,
+                on_progress=on_progress,
+                timeout=settings.transcribe_timeout_seconds,
+            )
             if len(text) > 20:
                 local_result = Transcript(
                     text, f"faster-whisper:{settings.whisper_model}", duration
@@ -715,30 +764,15 @@ def transcribe(
     if api_result:
         return api_result
 
-    # Last try: multimodal free provider.
+    # Last try: multimodal free provider (bounded by transcribe timeout).
     try:
-        from g4f.client import Client
-        from g4f.Provider import Gemini
-
-        client = Client(provider=Gemini)
-        with audio_path.open("rb") as audio_file:
-            response = client.chat.completions.create(
-                model="gemini-3.6-flash",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": (
-                            "Сделай ПОЛНУЮ транскрибацию лекции на языке оригинала "
-                            "(русский приоритет, английские термины сохрани). "
-                            "Не сокращай. Таймкоды [MM:SS] каждые 30–60 секунд. "
-                            "Верни только транскрипт."
-                        ),
-                    }
-                ],
-                media=[audio_file],
-                web_search=False,
-            )
-        text = (response.choices[0].message.content or "").strip()
+        if on_progress:
+            on_progress(0.12, "Резервная облачная расшифровка…")
+        text = _with_timeout(
+            _transcribe_g4f_multimodal,
+            audio_path,
+            timeout=settings.transcribe_timeout_seconds,
+        )
         if len(text) > 80 and "не могу" not in text.lower():
             return Transcript(text, "g4f:Gemini(multimodal)")
         errors.append("g4f multimodal: unsupported")

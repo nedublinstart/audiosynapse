@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+import logging
 import threading
 
 from dotenv import load_dotenv
@@ -27,6 +28,11 @@ from app.models import (  # noqa: E402, F401
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
     run_migrations()
+    from app.services.pipeline import recover_stale_processing_lectures
+
+    recovered = recover_stale_processing_lectures()
+    if recovered:
+        logging.getLogger("synapse").warning("startup: recovered %s stale lecture job(s)", recovered)
     threading.Thread(target=_warmup_services, daemon=True, name="synapse-warmup").start()
     yield
 

@@ -23,7 +23,12 @@ from app.schemas import (
 )
 from app.services import ai
 from app.services.documents import extract_text_from_file
-from app.services.pipeline import ProcessingStage, run_lecture_pipeline, update_lecture_progress
+from app.services.pipeline import (
+    ProcessingStage,
+    maybe_recover_stale_lecture,
+    run_lecture_pipeline,
+    update_lecture_progress,
+)
 
 logger = logging.getLogger("synapse.lectures")
 
@@ -169,6 +174,7 @@ def get_lecture(
     user: User = Depends(get_current_user),
 ) -> LectureDetailOut:
     lecture = _get_owned_lecture(db, user, lecture_id)
+    maybe_recover_stale_lecture(db, lecture)
     return LectureDetailOut.model_validate(lecture)
 
 
@@ -330,10 +336,15 @@ async def upload_material(
             lecture.processing_progress = 100
             lecture.processing_message = "Конспект обновлён"
         except Exception as exc:  # noqa: BLE001
-            lecture.status = LectureStatus.needs_clarification
-            lecture.enrichment_notice = f"Ошибка обогащения: {exc}"
-            lecture.processing_stage = None
-            lecture.processing_progress = 0
+            logger.exception("enrich_notes failed for lecture %s", lecture_id)
+            lecture.status = LectureStatus.ready
+            lecture.enrichment_notice = (
+                f"Не удалось обновить конспект ИИ ({type(exc).__name__}). "
+                "Предыдущая версия сохранена — попробуйте снова позже."
+            )
+            lecture.processing_stage = ProcessingStage.done.value
+            lecture.processing_progress = 100
+            lecture.processing_message = "Конспект без изменений"
         db.commit()
 
     lecture = _get_owned_lecture(db, user, lecture_id)
@@ -404,14 +415,24 @@ async def chat(
         .all()
     )
     history = [{"role": m.role, "content": m.content} for m in history_rows[:-1]]
-    answer = await ai.chat_about_lecture(
-        message=payload.message,
-        exam_mode=payload.exam_mode,
-        notes=lecture.notes_markdown or "",
-        transcript=lecture.transcript,
-        materials_text=_materials_text(lecture),
-        history=history,
-    )
+    try:
+        answer = await ai.chat_about_lecture(
+            message=payload.message,
+            exam_mode=payload.exam_mode,
+            notes=lecture.notes_markdown or "",
+            transcript=lecture.transcript,
+            materials_text=_materials_text(lecture),
+            history=history,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("chat endpoint failed lecture=%s", lecture_id)
+        answer = ai.offline_chat_reply(
+            payload.message.strip(),
+            exam_mode=payload.exam_mode,
+            notes=lecture.notes_markdown or "",
+            transcript=lecture.transcript,
+            materials_text=_materials_text(lecture),
+        )
     assistant = ChatMessage(
         lecture_id=lecture.id,
         role="assistant",

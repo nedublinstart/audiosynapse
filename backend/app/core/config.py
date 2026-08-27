@@ -24,12 +24,17 @@ class Settings(BaseSettings):
 
     # Shared AI behaviour
     ai_timeout_seconds: float = 30.0
+    ai_chat_timeout_seconds: float = 90.0
     ai_probe_timeout_seconds: float = 12.0
     ai_probe_workers: int = 6
     ai_max_attempts: int = 8
     ai_cache_seconds: float = 3600.0
     ai_notes_timeout_seconds: float = 150.0
     transcribe_timeout_seconds: float = 600.0
+    # Hard cap for one background lecture job (transcribe + notes).
+    pipeline_max_seconds: float = 2400.0
+    # Lectures stuck in processing longer than this are recovered on read / startup.
+    processing_stale_seconds: float = 2700.0
 
     # Notes quality: single-pass below this size; longer lectures use chunked extraction.
     notes_single_pass_max_chars: int = 48_000

@@ -62,7 +62,14 @@ async def preview_subject_import(
 ) -> SubjectImportPreviewOut:
     """AI (or heuristic) master: paste timetable / list → subject names, no schedule."""
     _ = user
-    items, engine = await ai.parse_subjects_from_text(payload.text)
+    try:
+        items, engine = await ai.parse_subjects_from_text(payload.text)
+    except Exception as exc:  # noqa: BLE001
+        import logging
+
+        logging.getLogger("synapse.subjects").warning("import preview failed: %s", exc)
+        items = ai.heuristic_subjects_from_text(payload.text)
+        engine = "heuristic"
     preview = [
         SubjectImportItem(
             name=item["name"],

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models import Lecture, LectureStatus
 
@@ -80,7 +82,134 @@ def _progress_reporter(lecture_id: int):
     return report
 
 
-async def run_lecture_pipeline(lecture_id: int) -> None:
+def _lecture_date_str(lecture: Lecture) -> str:
+    if lecture.lecture_date:
+        return lecture.lecture_date.strftime("%d.%m.%Y")
+    return datetime.now(timezone.utc).strftime("%d.%m.%Y")
+
+
+def _materials_text(lecture: Lecture) -> str:
+    return "\n\n".join(m.extracted_text for m in lecture.materials if m.extracted_text)
+
+
+def finalize_pipeline_with_fallback(
+    lecture_id: int,
+    *,
+    reason: str,
+    try_fallback_notes: bool = True,
+) -> None:
+    """
+    Always leave the lecture in a terminal state the user can see.
+    Prefer delivering degraded notes over an empty error screen.
+    """
+    from app.services import ai
+
+    db = SessionLocal()
+    try:
+        lecture = (
+            db.query(Lecture)
+            .options(joinedload(Lecture.materials), joinedload(Lecture.subject))
+            .filter(Lecture.id == lecture_id)
+            .one_or_none()
+        )
+        if not lecture or lecture.status != LectureStatus.processing:
+            return
+
+        materials_text = _materials_text(lecture)
+        transcript = (lecture.transcript or "").strip()
+
+        if try_fallback_notes and (transcript or materials_text.strip()):
+            notes = ai.build_demo_notes(
+                subject_name=lecture.subject.name if lecture.subject else "Предмет",
+                title=lecture.topic or lecture.title,
+                lecture_date=_lecture_date_str(lecture),
+                duration_seconds=lecture.duration_seconds,
+                transcript=transcript,
+                materials_text=materials_text,
+            )
+            lecture.notes_markdown = notes
+            lecture.status = LectureStatus.ready
+            lecture.enrichment_notice = (
+                f"Конспект собран в упрощённом режиме. {reason}"
+            )
+            lecture.processing_stage = ProcessingStage.done.value
+            lecture.processing_progress = 100
+            lecture.processing_message = "Конспект готов (упрощённый режим)"
+            logger.warning(
+                "pipeline fallback notes lecture=%s reason=%s",
+                lecture_id,
+                reason[:120],
+            )
+        else:
+            lecture.status = LectureStatus.needs_clarification
+            lecture.enrichment_notice = reason
+            lecture.processing_stage = None
+            lecture.processing_progress = 0
+            lecture.processing_message = "Обработка прервана"
+        db.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("finalize_pipeline_with_fallback failed lecture=%s", lecture_id)
+        db.rollback()
+    finally:
+        db.close()
+
+
+def recover_stale_processing_lectures() -> int:
+    """On startup: unblock lectures left in processing after a crash or hang."""
+    db = SessionLocal()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.processing_stale_seconds)
+        rows = (
+            db.query(Lecture.id)
+            .filter(
+                Lecture.status == LectureStatus.processing,
+                Lecture.updated_at < cutoff,
+            )
+            .all()
+        )
+        ids = [row[0] for row in rows]
+    finally:
+        db.close()
+
+    for lecture_id in ids:
+        finalize_pipeline_with_fallback(
+            lecture_id,
+            reason="Обработка зависла — нажмите «Обработать снова» для полного конспекта.",
+            try_fallback_notes=True,
+        )
+    if ids:
+        logger.warning("recovered %s stale processing lecture(s)", len(ids))
+    return len(ids)
+
+
+def maybe_recover_stale_lecture(db: Session, lecture: Lecture) -> bool:
+    """Lazy recovery when the client polls a stuck job."""
+    if lecture.status != LectureStatus.processing or not lecture.updated_at:
+        return False
+
+    updated = lecture.updated_at
+    if updated.tzinfo is None:
+        updated = updated.replace(tzinfo=timezone.utc)
+    else:
+        updated = updated.astimezone(timezone.utc)
+
+    age = datetime.now(timezone.utc) - updated
+    if age.total_seconds() < settings.processing_stale_seconds:
+        return False
+
+    lecture_id = lecture.id
+    db.commit()
+    finalize_pipeline_with_fallback(
+        lecture_id,
+        reason="Обработка заняла слишком много времени — показан упрощённый конспект. "
+        "Нажмите «Обработать снова» для полной версии.",
+        try_fallback_notes=True,
+    )
+    db.refresh(lecture)
+    return True
+
+
+async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
     from app.services import ai
 
     db = SessionLocal()
@@ -100,9 +229,7 @@ async def run_lecture_pipeline(lecture_id: int) -> None:
             message="Файл принят, запускаем обработку…",
         )
 
-        materials_text = "\n\n".join(
-            m.extracted_text for m in lecture.materials if m.extracted_text
-        )
+        materials_text = _materials_text(lecture)
         notices: list[str] = []
         transcript = ""
 
@@ -147,7 +274,7 @@ async def run_lecture_pipeline(lecture_id: int) -> None:
 
         if not transcript and not materials_text.strip():
             lecture.status = LectureStatus.needs_clarification
-            lecture.enrichment_notice = " ".join(notices)
+            lecture.enrichment_notice = " ".join(notices) or "Нет аудио-текста и материалов для конспекта."
             lecture.processing_stage = None
             lecture.processing_progress = 0
             lecture.processing_message = None
@@ -162,11 +289,7 @@ async def run_lecture_pipeline(lecture_id: int) -> None:
             message="Извлекаем темы, термины и структуру лекции…",
         )
 
-        date_str = (
-            lecture.lecture_date.strftime("%d.%m.%Y")
-            if lecture.lecture_date
-            else datetime.now(timezone.utc).strftime("%d.%m.%Y")
-        )
+        date_str = _lecture_date_str(lecture)
 
         update_lecture_progress(
             db,
@@ -210,13 +333,26 @@ async def run_lecture_pipeline(lecture_id: int) -> None:
     except Exception as exc:  # noqa: BLE001
         logger.exception("lecture pipeline failed for %s", lecture_id)
         db.rollback()
-        lecture = db.get(Lecture, lecture_id)
-        if lecture:
-            lecture.status = LectureStatus.needs_clarification
-            lecture.enrichment_notice = f"Ошибка обработки: {type(exc).__name__}: {exc}"
-            lecture.processing_stage = None
-            lecture.processing_progress = 0
-            lecture.processing_message = "Обработка прервана"
-            db.commit()
+        finalize_pipeline_with_fallback(
+            lecture_id,
+            reason=f"Ошибка обработки: {type(exc).__name__}",
+            try_fallback_notes=True,
+        )
     finally:
         db.close()
+
+
+async def run_lecture_pipeline(lecture_id: int) -> None:
+    try:
+        await asyncio.wait_for(
+            _run_lecture_pipeline_impl(lecture_id),
+            timeout=settings.pipeline_max_seconds,
+        )
+    except asyncio.TimeoutError:
+        logger.error("pipeline timeout lecture=%s after %ss", lecture_id, settings.pipeline_max_seconds)
+        finalize_pipeline_with_fallback(
+            lecture_id,
+            reason="Превышено время обработки — показан упрощённый конспект. "
+            "Нажмите «Обработать снова».",
+            try_fallback_notes=True,
+        )

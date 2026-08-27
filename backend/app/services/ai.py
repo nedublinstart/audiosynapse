@@ -648,6 +648,23 @@ async def enrich_notes(
         )
 
 
+def offline_chat_reply(
+    message: str,
+    *,
+    exam_mode: bool,
+    notes: str,
+    transcript: str | None,
+    materials_text: str,
+) -> str:
+    return _offline_chat_reply(
+        message,
+        exam_mode=exam_mode,
+        notes=notes,
+        transcript=transcript,
+        materials_text=materials_text,
+    )
+
+
 async def chat_about_lecture(
     *,
     message: str,
@@ -689,7 +706,12 @@ async def chat_about_lecture(
 {message}
 """
     try:
-        return await _chat(system, user_prompt, temperature=0.4)
+        return await _chat(
+            system,
+            user_prompt,
+            temperature=0.4,
+            timeout=settings.ai_chat_timeout_seconds,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.error("chat failed: %s", exc)
         return _offline_chat_reply(
@@ -744,6 +766,11 @@ def _extract_json_array(text: str) -> list | None:
         return data if isinstance(data, list) else None
     except Exception:  # noqa: BLE001
         return None
+
+
+def heuristic_subjects_from_text(text: str) -> list[dict[str, str | None]]:
+    """Public offline fallback for subject import."""
+    return _heuristic_subjects_from_text(text)
 
 
 def _heuristic_subjects_from_text(text: str) -> list[dict[str, str | None]]:

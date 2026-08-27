@@ -21,6 +21,7 @@ type Props = {
   progress?: number;
   message?: string | null;
   audioSizeBytes?: number | null;
+  stuck?: boolean;
 };
 
 function formatSize(bytes: number) {
@@ -28,7 +29,7 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
 }
 
-export function ProcessingStatus({ stage, progress = 0, message, audioSizeBytes }: Props) {
+export function ProcessingStatus({ stage, progress = 0, message, audioSizeBytes, stuck }: Props) {
   const activeIdx = stepIndex(stage);
   const pct = Math.max(0, Math.min(100, progress));
 
@@ -44,7 +45,9 @@ export function ProcessingStatus({ stage, progress = 0, message, audioSizeBytes 
           Обрабатываем лекцию
         </p>
         <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-          {message || "Это займёт 1–4 минуты в зависимости от длины записи."}
+          {stuck
+            ? "Обработка занимает больше времени, чем обычно — мы всё ещё ждём результат."
+            : message || "Это займёт 1–4 минуты в зависимости от длины записи."}
         </p>
         {audioSizeBytes ? (
           <p className="mt-1 text-xs" style={{ color: "var(--fg-muted)" }}>
