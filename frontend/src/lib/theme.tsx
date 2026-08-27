@@ -32,7 +32,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   return (
     <ThemeContext.Provider value={{ theme, toggle }}>
       <AmbientField />
-      {children}
+      <div className="app-layer">{children}</div>
     </ThemeContext.Provider>
   );
 }
