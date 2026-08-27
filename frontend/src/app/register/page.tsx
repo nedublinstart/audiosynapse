@@ -31,8 +31,11 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center safe-px py-10">
-      <FadeIn>
+    <div className="relative mx-auto flex min-h-dvh max-w-md flex-col justify-center safe-px py-10">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="ambient-orb ambient-orb--b !opacity-30" />
+      </div>
+      <FadeIn variant="hero" duration={1000}>
         <Link href="/" className="mb-8 inline-flex items-center gap-2.5">
           <span className="brand-mark">
             <SynapseMark size={16} />
@@ -41,7 +44,7 @@ export default function RegisterPage() {
         </Link>
       </FadeIn>
 
-      <FadeIn delay={80}>
+      <FadeIn delay={100} variant="blur-up" duration={950}>
         <div className="panel p-5 sm:p-7">
           <h1 className="page-title mb-1 text-2xl sm:text-[1.75rem]">Профиль</h1>
           <p className="mb-6 text-sm" style={{ color: "var(--fg-muted)" }}>

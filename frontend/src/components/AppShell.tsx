@@ -24,29 +24,37 @@ export function AppShell({
   return (
     <div className="min-h-dvh pb-[env(safe-area-inset-bottom)]">
       <header
-        className="sticky top-0 z-30 border-b animate-fade-in"
+        className="sticky top-0 z-30 border-b animate-blur-up"
         style={{
-          animationDuration: "0.55s",
+          animationDuration: "0.7s",
           borderColor: "color-mix(in srgb, var(--border) 80%, transparent)",
-          background: "color-mix(in srgb, var(--bg) 72%, transparent)",
-          backdropFilter: "blur(14px) saturate(1.15)",
+          background: "color-mix(in srgb, var(--bg) 68%, transparent)",
+          backdropFilter: "blur(18px) saturate(1.25)",
+          WebkitBackdropFilter: "blur(18px) saturate(1.25)",
           paddingTop: "env(safe-area-inset-top)",
+          transition: "background 0.4s var(--ease-expo), border-color 0.4s var(--ease-expo)",
         }}
       >
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 safe-px py-3">
           <div className="flex min-w-0 items-center gap-4 sm:gap-6">
-            <Link href="/app" className="flex shrink-0 items-center gap-2.5 tracking-tight">
-              <span className="brand-mark">
+            <Link
+              href="/app"
+              className="group flex shrink-0 items-center gap-2.5 tracking-tight"
+            >
+              <span className="brand-mark transition-transform duration-500 group-hover:scale-105 group-hover:-rotate-3">
                 <SynapseMark size={16} />
               </span>
-              <span className="page-title text-[1.15rem] sm:text-[1.25rem]">Synapse</span>
+              <span className="page-title text-[1.15rem] transition-opacity duration-300 sm:text-[1.25rem]">
+                Synapse
+              </span>
             </Link>
             <nav className="hidden items-center gap-1 text-sm sm:flex" style={{ color: "var(--fg-muted)" }}>
               <Link
                 href="/app"
-                className="rounded-lg px-2.5 py-1.5 transition-colors duration-300"
+                className="nav-link rounded-lg px-2.5 py-1.5"
+                data-active={pathname === "/app" ? "true" : "false"}
                 style={{
-                  background: pathname.startsWith("/app") && pathname === "/app" ? "var(--bg-soft)" : "transparent",
+                  background: pathname === "/app" ? "var(--bg-soft)" : "transparent",
                   color: pathname === "/app" ? "var(--fg)" : undefined,
                 }}
               >
@@ -83,7 +91,7 @@ export function AppShell({
         {(title || actions) && (
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 safe-px pb-3 sm:hidden">
             {title ? (
-              <p className="min-w-0 truncate text-sm" style={{ color: "var(--fg-muted)" }}>
+              <p className="min-w-0 truncate text-sm animate-fade-in" style={{ color: "var(--fg-muted)" }}>
                 {title}
               </p>
             ) : (
@@ -95,7 +103,7 @@ export function AppShell({
 
         {title ? (
           <div className="mx-auto hidden max-w-5xl items-center gap-2 safe-px pb-3 sm:flex">
-            <p className="truncate text-sm" style={{ color: "var(--fg-muted)" }}>
+            <p className="truncate text-sm animate-fade-in" style={{ color: "var(--fg-muted)" }}>
               {title}
             </p>
           </div>

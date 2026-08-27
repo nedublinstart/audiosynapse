@@ -6,6 +6,7 @@ import { BookOpen, CalendarClock, ChevronRight, Layers, Plus } from "lucide-reac
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FadeIn } from "@/components/FadeIn";
+import { MagneticSurface } from "@/components/MagneticSurface";
 import { WEEKDAYS } from "@/components/StatusBadge";
 import { api, type ScheduleSuggestion, type Subject } from "@/lib/api";
 
@@ -75,7 +76,7 @@ function DashboardInner() {
 
   return (
     <AppShell title="Учебный процесс">
-      <FadeIn variant="fade-scale" duration={860}>
+      <FadeIn variant="blur-up" duration={1000}>
         <section className="dashboard-hero panel mb-6 p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -241,52 +242,54 @@ function DashboardInner() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {subjects.map((subject, i) => (
-            <FadeIn key={subject.id} delay={120 + i * 65} variant="fade-scale" duration={820}>
-              <Link
-                href={`/app/subjects/${subject.id}`}
-                className="subject-card panel panel-interactive block h-full p-4 sm:p-5"
-                style={{ "--subject-accent": subject.color } as CSSProperties}
-              >
-                <span className="subject-card-glow" aria-hidden />
-                <div className="relative mb-3 flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <span
-                      className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{
-                        background: subject.color,
-                        boxShadow: `0 0 0 2px color-mix(in srgb, ${subject.color} 35%, transparent)`,
-                      }}
+            <FadeIn key={subject.id} delay={120 + i * 70} variant="blur-up" duration={950}>
+              <MagneticSurface strength={6} tilt={3} className="h-full">
+                <Link
+                  href={`/app/subjects/${subject.id}`}
+                  className="subject-card panel block h-full p-4 sm:p-5"
+                  style={{ "--subject-accent": subject.color } as CSSProperties}
+                >
+                  <span className="subject-card-glow" aria-hidden />
+                  <div className="relative mb-3 flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span
+                        className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{
+                          background: subject.color,
+                          boxShadow: `0 0 0 2px color-mix(in srgb, ${subject.color} 35%, transparent)`,
+                        }}
+                      />
+                      <h3 className="truncate font-medium tracking-tight">{subject.name}</h3>
+                    </div>
+                    <ChevronRight
+                      size={16}
+                      className="subject-card-arrow shrink-0"
+                      style={{ color: "var(--accent)" }}
                     />
-                    <h3 className="truncate font-medium tracking-tight">{subject.name}</h3>
                   </div>
-                  <ChevronRight
-                    size={16}
-                    className="subject-card-arrow shrink-0"
-                    style={{ color: "var(--accent)" }}
-                  />
-                </div>
-                <p
-                  className="relative mb-4 line-clamp-2 min-h-[2.75rem] text-sm leading-relaxed"
-                  style={{ color: "var(--fg-muted)" }}
-                >
-                  {subject.description || "Без описания"}
-                </p>
-                <div
-                  className="relative flex items-center justify-between gap-2 border-t pt-3 text-xs"
-                  style={{ borderColor: "color-mix(in srgb, var(--border) 65%, transparent)", color: "var(--fg-muted)" }}
-                >
-                  <span className="font-medium" style={{ color: "var(--fg)" }}>
-                    {subject.lecture_count} {lectureLabel(subject.lecture_count)}
-                  </span>
-                  <span className="truncate text-right">
-                    {subject.schedule_slots.length
-                      ? subject.schedule_slots
-                          .map((s) => `${WEEKDAYS[s.weekday]} ${s.start_time}`)
-                          .join(", ")
-                      : "Без расписания"}
-                  </span>
-                </div>
-              </Link>
+                  <p
+                    className="relative mb-4 line-clamp-2 min-h-[2.75rem] text-sm leading-relaxed"
+                    style={{ color: "var(--fg-muted)" }}
+                  >
+                    {subject.description || "Без описания"}
+                  </p>
+                  <div
+                    className="relative flex items-center justify-between gap-2 border-t pt-3 text-xs"
+                    style={{ borderColor: "color-mix(in srgb, var(--border) 65%, transparent)", color: "var(--fg-muted)" }}
+                  >
+                    <span className="font-medium" style={{ color: "var(--fg)" }}>
+                      {subject.lecture_count} {lectureLabel(subject.lecture_count)}
+                    </span>
+                    <span className="truncate text-right">
+                      {subject.schedule_slots.length
+                        ? subject.schedule_slots
+                            .map((s) => `${WEEKDAYS[s.weekday]} ${s.start_time}`)
+                            .join(", ")
+                        : "Без расписания"}
+                    </span>
+                  </div>
+                </Link>
+              </MagneticSurface>
             </FadeIn>
           ))}
           {!subjects.length ? (

@@ -273,7 +273,7 @@ function LectureInner() {
 
       {success ? (
         <div
-          className="mb-4 animate-fade-in rounded-[10px] px-4 py-3 text-sm"
+          className="mb-4 animate-toast rounded-[10px] px-4 py-3 text-sm"
           style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
         >
           {success}
@@ -281,7 +281,7 @@ function LectureInner() {
       ) : null}
 
       {error ? (
-        <p className="mb-4 text-sm" style={{ color: "var(--danger)" }}>
+        <p className="mb-4 animate-toast text-sm" style={{ color: "var(--danger)" }}>
           {error}
         </p>
       ) : null}
@@ -294,9 +294,8 @@ function LectureInner() {
         <button
           role="tab"
           aria-selected={tab === "notes"}
-          className="relative flex-1 rounded-none border-b-2 px-3 py-3 text-sm transition-colors duration-300 sm:flex-none"
+          className="tab-btn relative flex-1 rounded-none px-3 py-3 text-sm sm:flex-none"
           style={{
-            borderColor: tab === "notes" ? "var(--accent)" : "transparent",
             color: tab === "notes" ? "var(--fg)" : "var(--fg-muted)",
           }}
           onClick={() => setTab("notes")}
@@ -306,9 +305,8 @@ function LectureInner() {
         <button
           role="tab"
           aria-selected={tab === "chat"}
-          className="relative flex flex-1 items-center justify-center gap-1.5 rounded-none border-b-2 px-3 py-3 text-sm transition-colors duration-300 sm:flex-none"
+          className="tab-btn relative flex flex-1 items-center justify-center gap-1.5 rounded-none px-3 py-3 text-sm sm:flex-none"
           style={{
-            borderColor: tab === "chat" ? "var(--accent)" : "transparent",
             color: tab === "chat" ? "var(--fg)" : "var(--fg-muted)",
           }}
           onClick={() => setTab("chat")}

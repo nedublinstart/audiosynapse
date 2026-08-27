@@ -9,19 +9,21 @@ import {
 } from "react";
 import clsx from "clsx";
 
-type FadeVariant = "fade-up" | "fade-in" | "fade-scale";
+type FadeVariant = "fade-up" | "fade-in" | "fade-scale" | "blur-up" | "hero";
 
 const VARIANT_CLASS: Record<FadeVariant, string> = {
   "fade-up": "animate-fade-up",
   "fade-in": "animate-fade-in",
   "fade-scale": "animate-fade-scale",
+  "blur-up": "animate-blur-up",
+  hero: "animate-hero-reveal",
 };
 
 export function FadeIn({
   children,
   className,
   delay = 0,
-  duration = 780,
+  duration = 900,
   variant = "fade-up",
   as: Tag = "div",
   when = true,
@@ -31,8 +33,7 @@ export function FadeIn({
   delay?: number;
   duration?: number;
   variant?: FadeVariant;
-  as?: "div" | "section" | "article" | "main" | "header" | "li";
-  /** When false, content stays hidden (for mount toggles). */
+  as?: "div" | "section" | "article" | "main" | "header" | "li" | "h1" | "h2" | "p";
   when?: boolean;
 }) {
   const ref = useRef<HTMLElement>(null);
@@ -65,9 +66,8 @@ export function FadeIn({
       if (!cancelled) setActive(true);
     };
 
-    // Above-the-fold: start quickly; below: wait until visible.
     const rect = el.getBoundingClientRect();
-    const mostlyVisible = rect.top < window.innerHeight * 0.92;
+    const mostlyVisible = rect.top < window.innerHeight * 0.94;
 
     if (mostlyVisible) {
       const id = window.requestAnimationFrame(() => start());
@@ -84,7 +84,7 @@ export function FadeIn({
           observer.disconnect();
         }
       },
-      { threshold: 0.06, rootMargin: "0px 0px -2% 0px" },
+      { threshold: 0.08, rootMargin: "0px 0px -4% 0px" },
     );
     observer.observe(el);
     return () => {

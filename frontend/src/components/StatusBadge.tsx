@@ -19,7 +19,7 @@ export function StatusBadge({ status, className }: { status: LectureStatus; clas
   return (
     <span
       className={clsx(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-medium tracking-wide",
+        "status-badge inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-medium tracking-wide",
         className
       )}
       style={{
