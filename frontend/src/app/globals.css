@@ -3,29 +3,27 @@
 @tailwind utilities;
 
 :root {
-  /* Cool light companion to the neon brand */
-  --bg: #e8eef2;
-  --bg-elevated: #f4f8fb;
-  --bg-soft: #d7e2ea;
-  --fg: #0b1218;
-  --fg-muted: #5a6b78;
-  --border: #b8c8d4;
-  --accent: #00c8c4;
-  --accent-hover: #00a8a5;
-  --accent-soft: #c8f3f2;
-  --accent-fg: #041012;
-  --danger: #c44a42;
-  --warn: #b8860b;
-  --ready: #00a8a5;
-  --processing: #3a7a9a;
-  --awaiting: #6a7a88;
-  --radius: 14px;
-  --shadow: 0 1px 0 rgba(11, 18, 24, 0.04), 0 12px 32px rgba(11, 18, 24, 0.06);
-  --glow: 0 0 24px color-mix(in srgb, var(--accent) 28%, transparent);
+  --bg: #f2f4f5;
+  --bg-elevated: #ffffff;
+  --bg-soft: #e8ecee;
+  --fg: #14181b;
+  --fg-muted: #5f6b73;
+  --border: #d5dce0;
+  --accent: #1f7a75;
+  --accent-hover: #186660;
+  --accent-soft: #d7ecea;
+  --accent-fg: #f7fffe;
+  --danger: #b42318;
+  --warn: #9a6700;
+  --ready: #1f7a75;
+  --processing: #3d6a8a;
+  --awaiting: #6b757d;
+  --radius: 12px;
+  --shadow: 0 1px 0 rgba(20, 24, 27, 0.04), 0 8px 24px rgba(20, 24, 27, 0.05);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-apple: cubic-bezier(0.25, 0.1, 0.25, 1);
-  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-spring: cubic-bezier(0.34, 1.2, 0.64, 1);
   --ease-press: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --header-h: 3.5rem;
@@ -35,24 +33,23 @@
 }
 
 html.dark {
-  /* Brand: pitch black + neon cyan neural S */
-  --bg: #05080c;
-  --bg-elevated: #0b1118;
-  --bg-soft: #121a24;
-  --fg: #e8f4f8;
-  --fg-muted: #7e93a3;
-  --border: #1c2836;
-  --accent: #00fff8;
-  --accent-hover: #5dfffa;
-  --accent-soft: #0a2a2c;
-  --accent-fg: #021012;
-  --danger: #ff7b72;
-  --warn: #e6c35c;
-  --ready: #00fff8;
-  --processing: #5aa8ff;
-  --awaiting: #6e8294;
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 18px 48px rgba(0, 0, 0, 0.55);
-  --glow: 0 0 32px color-mix(in srgb, var(--accent) 35%, transparent);
+  /* Quiet dark + calm teal — logo stays, no neon circus */
+  --bg: #101316;
+  --bg-elevated: #171b1f;
+  --bg-soft: #1e2429;
+  --fg: #e8eef1;
+  --fg-muted: #8b979f;
+  --border: #2a3238;
+  --accent: #4db8b0;
+  --accent-hover: #6ac9c2;
+  --accent-soft: #1a2f2e;
+  --accent-fg: #061010;
+  --danger: #e08b82;
+  --warn: #d2b46a;
+  --ready: #4db8b0;
+  --processing: #7aa0bb;
+  --awaiting: #8a9399;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
 html {
@@ -74,7 +71,7 @@ body {
   overflow-x: hidden;
 }
 
-/* Atmospheric field — cyan neural haze on charcoal */
+/* Soft atmosphere — no neon haze */
 body::before {
   content: "";
   position: fixed;
@@ -82,10 +79,8 @@ body::before {
   pointer-events: none;
   z-index: -2;
   background:
-    radial-gradient(920px 560px at 12% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%),
-    radial-gradient(720px 480px at 92% 8%, color-mix(in srgb, #2a6cff 10%, transparent), transparent 58%),
-    radial-gradient(640px 420px at 50% 110%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 55%),
-    linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 55%, transparent), transparent 42%),
+    radial-gradient(800px 480px at 10% -12%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 65%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 40%, transparent), transparent 38%),
     var(--bg);
 }
 
@@ -410,20 +405,20 @@ html.dark body::after {
     width: 55%;
     height: 70%;
     pointer-events: none;
-    opacity: 0.35;
+    opacity: 0.18;
     background: radial-gradient(
       circle at 70% 30%,
-      color-mix(in srgb, var(--subject-accent, var(--accent)) 28%, transparent),
+      color-mix(in srgb, var(--subject-accent, var(--accent)) 22%, transparent),
       transparent 68%
     );
     transition:
-      opacity 0.55s var(--ease-expo),
-      transform 0.55s var(--ease-expo);
+      opacity 0.45s var(--ease-expo),
+      transform 0.45s var(--ease-expo);
   }
 
   .subject-card:hover .subject-card-glow {
-    opacity: 0.62;
-    transform: scale(1.08);
+    opacity: 0.3;
+    transform: scale(1.04);
   }
 
   .subject-card-arrow {
@@ -486,15 +481,15 @@ html.dark body::after {
   }
 
   .month-cal-cell[data-selected="1"] {
-    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
-    background: color-mix(in srgb, var(--accent-soft) 55%, var(--bg-elevated));
-    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    box-shadow: none;
+    background: color-mix(in srgb, var(--accent-soft) 70%, var(--bg-elevated));
+    transform: none;
   }
 
   .month-cal-cell:hover {
-    transform: translateY(-1px) scale(1.02);
-    border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+    transform: none;
+    border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
   }
 
   .month-cal-daynum {
@@ -525,16 +520,8 @@ html.dark body::after {
   }
 
   .dashboard-hero {
-    background:
-      linear-gradient(
-        145deg,
-        color-mix(in srgb, var(--accent) 10%, var(--bg-elevated)),
-        color-mix(in srgb, var(--bg-elevated) 92%, transparent)
-      );
-    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, var(--accent) 12%, transparent),
-      0 0 40px color-mix(in srgb, var(--accent) 6%, transparent);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
     transition:
       box-shadow var(--motion-slow) var(--ease-expo),
       transform var(--motion-slow) var(--ease-expo);
@@ -594,21 +581,21 @@ html.dark body::after {
   }
 
   .ambient-orb--a {
-    width: min(52vw, 420px);
-    height: min(52vw, 420px);
-    background: color-mix(in srgb, var(--accent) 28%, transparent);
-    top: -12%;
-    left: -8%;
-    animation: ambient-drift 14s var(--ease-apple) infinite;
+    width: min(48vw, 360px);
+    height: min(48vw, 360px);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    top: -14%;
+    left: -10%;
+    animation: ambient-drift 18s var(--ease-apple) infinite;
   }
 
   .ambient-orb--b {
-    width: min(44vw, 340px);
-    height: min(44vw, 340px);
-    background: color-mix(in srgb, #2a6cff 20%, transparent);
-    top: 8%;
-    right: -10%;
-    animation: ambient-drift-alt 18s var(--ease-apple) infinite;
+    width: min(40vw, 300px);
+    height: min(40vw, 300px);
+    background: color-mix(in srgb, var(--fg-muted) 10%, transparent);
+    top: 12%;
+    right: -12%;
+    animation: ambient-drift-alt 22s var(--ease-apple) infinite;
   }
 
   .nav-link {
@@ -707,26 +694,14 @@ html.dark body::after {
 
   .btn-primary {
     @apply btn;
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 92%, white),
-      var(--accent)
-    );
+    background: var(--accent);
     color: var(--accent-fg);
-    box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
-      0 8px 24px color-mix(in srgb, var(--accent) 28%, transparent);
+    box-shadow: none;
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: linear-gradient(
-      135deg,
-      var(--accent-hover),
-      color-mix(in srgb, var(--accent) 80%, white)
-    );
-    box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent),
-      0 12px 32px color-mix(in srgb, var(--accent) 38%, transparent);
+    background: var(--accent-hover);
+    box-shadow: none;
   }
 
   .btn-ghost {
@@ -784,64 +759,44 @@ html.dark body::after {
 
   .page-title {
     font-family: var(--font-display), system-ui, sans-serif;
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    line-height: 1.1;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
   }
 
   .brand-wordmark {
     font-family: var(--font-display), system-ui, sans-serif;
-    font-weight: 700;
-    letter-spacing: -0.045em;
-    background: linear-gradient(
-      120deg,
-      var(--fg) 10%,
-      color-mix(in srgb, var(--accent) 75%, var(--fg)) 55%,
-      var(--accent) 100%
-    );
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    font-weight: 650;
+    letter-spacing: -0.035em;
+    color: var(--fg);
   }
 
   .brand-mark {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2.15rem;
-    height: 2.15rem;
-    border-radius: 11px;
-    padding: 0.2rem;
-    background:
-      radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--accent) 28%, transparent), transparent 55%),
-      linear-gradient(160deg, var(--bg-soft), var(--bg-elevated));
-    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, var(--accent) 18%, transparent),
-      0 0 18px color-mix(in srgb, var(--accent) 16%, transparent);
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 10px;
+    padding: 0.22rem;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
     transition:
-      transform 0.4s var(--ease-spring),
-      box-shadow 0.4s var(--ease-expo),
-      border-color 0.4s var(--ease-expo);
+      transform 0.35s var(--ease-spring),
+      border-color 0.35s var(--ease-expo);
   }
 
   .brand-mark:hover {
-    transform: scale(1.07) rotate(-2deg);
-    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, var(--accent) 28%, transparent),
-      0 0 28px color-mix(in srgb, var(--accent) 32%, transparent);
+    transform: scale(1.04);
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
   }
 
   .brand-mark--hero {
-    width: min(42vw, 11.5rem);
-    height: min(42vw, 11.5rem);
-    border-radius: 28px;
-    padding: 0.85rem;
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, var(--accent) 25%, transparent),
-      0 0 60px color-mix(in srgb, var(--accent) 28%, transparent),
-      0 24px 64px rgba(0, 0, 0, 0.45);
+    width: min(34vw, 7.5rem);
+    height: min(34vw, 7.5rem);
+    border-radius: 20px;
+    padding: 0.65rem;
+    background: var(--bg-elevated);
   }
 }
 

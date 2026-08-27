@@ -61,7 +61,7 @@ class ScheduleSlotOut(ORMModel):
 class SubjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
-    color: str = "#00c8c4"
+    color: str = "#1f7a75"
     semester_id: int | None = None
     schedule: list[ScheduleSlotCreate] = []
 

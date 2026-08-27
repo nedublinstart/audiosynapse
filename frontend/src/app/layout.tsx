@@ -1,14 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Unbounded, Manrope } from "next/font/google";
+import { Manrope } from "next/font/google";
 import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import "./globals.css";
-
-const display = Unbounded({
-  subsets: ["latin", "cyrillic"],
-  variable: "--font-display",
-  weight: ["500", "600", "700"],
-});
 
 const sans = Manrope({
   subsets: ["latin", "cyrillic"],
@@ -39,15 +33,18 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#e8eef2" },
-    { media: "(prefers-color-scheme: dark)", color: "#05080c" },
+    { media: "(prefers-color-scheme: light)", color: "#f2f4f5" },
+    { media: "(prefers-color-scheme: dark)", color: "#101316" },
   ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru" className="dark" suppressHydrationWarning>
-      <body className={`${display.variable} ${sans.variable} antialiased`}>
+      <body
+        className={`${sans.variable} antialiased`}
+        style={{ ["--font-display" as string]: "var(--font-sans)" }}
+      >
         <ThemeProvider>
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>

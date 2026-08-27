@@ -41,10 +41,10 @@ export function AppShell({
               href="/app"
               className="group flex shrink-0 items-center gap-2.5 tracking-tight"
             >
-              <span className="brand-mark transition-transform duration-500 group-hover:scale-105 group-hover:-rotate-2">
-                <SynapseMark size={22} priority />
+              <span className="brand-mark transition-transform duration-300 group-hover:scale-105">
+                <SynapseMark size={20} priority />
               </span>
-              <span className="brand-wordmark text-[1.2rem] sm:text-[1.3rem]">Synapse</span>
+              <span className="brand-wordmark text-[1.15rem] sm:text-[1.2rem]">Synapse</span>
             </Link>
             <nav className="hidden items-center gap-1 text-sm sm:flex" style={{ color: "var(--fg-muted)" }}>
               <Link
