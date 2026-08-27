@@ -31,9 +31,6 @@ export default function LoginPage() {
 
   return (
     <div className="relative mx-auto flex min-h-dvh max-w-md flex-col justify-center safe-px py-10">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="ambient-orb ambient-orb--a !opacity-30" />
-      </div>
       <FadeIn variant="hero" duration={1000}>
         <Link href="/" className="mb-8 inline-flex items-center gap-2.5">
           <span className="brand-mark">

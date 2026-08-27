@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { AmbientField } from "@/components/AmbientField";
 
 type Theme = "light" | "dark";
 
@@ -28,7 +29,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  return <ThemeContext.Provider value={{ theme, toggle }}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={{ theme, toggle }}>
+      <AmbientField />
+      {children}
+    </ThemeContext.Provider>
+  );
 }
 
 export function useTheme() {

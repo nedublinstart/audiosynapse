@@ -18,10 +18,6 @@ export default function HomePage() {
 
   return (
     <div className="relative min-h-dvh overflow-hidden">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="ambient-orb ambient-orb--a !opacity-25" />
-      </div>
-
       <div className="relative mx-auto flex min-h-dvh max-w-xl flex-col justify-center safe-px py-16 sm:py-20">
         <FadeIn variant="fade-up" duration={800}>
           <div className="mb-8 flex items-center gap-3">

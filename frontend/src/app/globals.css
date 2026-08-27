@@ -198,6 +198,60 @@ html.dark body::after {
   }
 }
 
+@keyframes aurora-a {
+  0%,
+  100% {
+    transform: translate3d(-4%, -2%, 0) scale(1) rotate(0deg);
+    border-radius: 42% 58% 48% 52% / 52% 42% 58% 48%;
+  }
+  33% {
+    transform: translate3d(8%, 6%, 0) scale(1.08) rotate(8deg);
+    border-radius: 58% 42% 62% 38% / 44% 56% 44% 56%;
+  }
+  66% {
+    transform: translate3d(2%, -8%, 0) scale(0.96) rotate(-6deg);
+    border-radius: 48% 52% 40% 60% / 58% 40% 60% 42%;
+  }
+}
+
+@keyframes aurora-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+    border-radius: 50% 50% 46% 54% / 48% 56% 44% 52%;
+  }
+  40% {
+    transform: translate3d(-10%, 8%, 0) scale(1.1) rotate(-10deg);
+    border-radius: 40% 60% 55% 45% / 60% 40% 55% 45%;
+  }
+  70% {
+    transform: translate3d(6%, -4%, 0) scale(0.94) rotate(5deg);
+    border-radius: 55% 45% 42% 58% / 45% 55% 48% 52%;
+  }
+}
+
+@keyframes aurora-c {
+  0%,
+  100% {
+    transform: translate3d(0, 4%, 0) scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translate3d(-6%, -6%, 0) scale(1.12);
+    opacity: 0.7;
+  }
+}
+
+@keyframes veil-shift {
+  0%,
+  100% {
+    background-position: 0% 40%, 100% 60%;
+  }
+  50% {
+    background-position: 80% 20%, 20% 80%;
+  }
+}
+
 @keyframes float-soft {
   0%,
   100% {
@@ -313,7 +367,9 @@ html.dark body::after {
   .animate-float,
   .animate-toast,
   .stagger > *,
-  .ambient-orb {
+  .ambient-orb,
+  .ambient-blob,
+  .ambient-veil {
     animation: none !important;
   }
 
@@ -331,6 +387,73 @@ html.dark body::after {
 }
 
 @layer components {
+  .ambient-field {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .ambient-blob {
+    position: absolute;
+    display: block;
+    filter: blur(72px);
+    will-change: transform, border-radius, opacity;
+    opacity: 0.55;
+  }
+
+  .ambient-blob--1 {
+    width: min(68vw, 520px);
+    height: min(68vw, 520px);
+    top: -18%;
+    left: -12%;
+    background: color-mix(in srgb, var(--accent) 32%, transparent);
+    animation: aurora-a 28s var(--ease-apple) infinite;
+  }
+
+  .ambient-blob--2 {
+    width: min(58vw, 460px);
+    height: min(58vw, 460px);
+    top: 8%;
+    right: -16%;
+    background: color-mix(in srgb, #5a7a9a 22%, transparent);
+    animation: aurora-b 34s var(--ease-apple) infinite;
+  }
+
+  .ambient-blob--3 {
+    width: min(70vw, 540px);
+    height: min(50vw, 400px);
+    bottom: -22%;
+    left: 18%;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    animation: aurora-c 24s var(--ease-apple) infinite;
+  }
+
+  .ambient-veil {
+    position: absolute;
+    inset: -20%;
+    background:
+      radial-gradient(ellipse 55% 45% at 20% 25%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 80% 70%, color-mix(in srgb, #6a8499 8%, transparent), transparent 72%);
+    background-size: 140% 140%, 140% 140%;
+    animation: veil-shift 36s var(--ease-apple) infinite;
+    opacity: 0.85;
+  }
+
+  html:not(.dark) .ambient-blob--1 {
+    opacity: 0.4;
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+
+  html:not(.dark) .ambient-blob--2 {
+    opacity: 0.28;
+  }
+
+  html:not(.dark) .ambient-blob--3 {
+    opacity: 0.32;
+  }
+
   .panel {
     background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
     border: 1px solid var(--border);
@@ -913,6 +1036,7 @@ html.dark body::after {
 @media print {
   body::before,
   body::after,
+  .ambient-field,
   header,
   .no-print {
     display: none !important;
