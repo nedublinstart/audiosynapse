@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState, type CSSProperties } from "react";
-import { ArrowLeft, BookOpen, CalendarPlus, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FadeIn } from "@/components/FadeIn";
-import { StatusBadge, WEEKDAYS } from "@/components/StatusBadge";
+import { StatusBadge } from "@/components/StatusBadge";
 import { api, type Lecture, type Subject } from "@/lib/api";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -21,14 +21,8 @@ function SubjectInner() {
   const [title, setTitle] = useState("");
   const [topic, setTopic] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [weekday, setWeekday] = useState(0);
-  const [startTime, setStartTime] = useState("10:00");
-  const [endTime, setEndTime] = useState("11:30");
-  const [location, setLocation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [toast, setToast] = useState("");
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
@@ -48,17 +42,12 @@ function SubjectInner() {
     });
   }, [load]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const id = window.setTimeout(() => setToast(""), 3600);
-    return () => window.clearTimeout(id);
-  }, [toast]);
-
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
+      // Date is set on the server as today (date-only) — no clock time from the user.
       const lecture = await api.createLecture(subjectId, {
         title: title.trim(),
         topic: topic.trim() || undefined,
@@ -73,35 +62,11 @@ function SubjectInner() {
     }
   }
 
-  async function onAddSchedule(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await api.addSchedule(subjectId, {
-        weekday,
-        start_time: startTime,
-        end_time: endTime,
-        location: location.trim() || null,
-      });
-      setShowSchedule(false);
-      setLocation("");
-      setToast("Ориентир по расписанию добавлен");
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось сохранить");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function onDeleteSubject() {
     if (!confirm("Удалить предмет и все лекции?")) return;
     await api.deleteSubject(subjectId);
     router.push("/app");
   }
-
-  const slots = subject?.schedule_slots ?? [];
 
   return (
     <AppShell title={subject ? subject.name : "Предмет"}>
@@ -126,126 +91,19 @@ function SubjectInner() {
                 <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
                   {subject?.description || "Лекции и конспекты по этому предмету"}
                 </p>
-                {loaded ? (
-                  <p className="mt-2 text-xs" style={{ color: "var(--fg-muted)" }}>
-                    {slots.length
-                      ? slots
-                          .map(
-                            (s) =>
-                              `${WEEKDAYS[s.weekday]} ${s.start_time}–${s.end_time}${
-                                s.location ? ` · ${s.location}` : ""
-                              }`,
-                          )
-                          .join(" · ")
-                      : "Гибкое расписание — ориентир можно добавить позже"}
-                  </p>
-                ) : null}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
-                className="btn-ghost !min-h-10 !px-3"
-                onClick={() => {
-                  setShowSchedule((v) => !v);
-                  setShowForm(false);
-                }}
-                aria-label="Расписание"
-                title="Ориентир по расписанию"
-              >
-                <CalendarPlus size={16} />
-              </button>
               <button className="btn-ghost !min-h-10 !px-3" onClick={() => void onDeleteSubject()} aria-label="Удалить">
                 <Trash2 size={16} />
               </button>
-              <button
-                className="btn-primary flex-1 sm:!w-auto"
-                onClick={() => {
-                  setShowForm((v) => !v);
-                  setShowSchedule(false);
-                }}
-              >
+              <button className="btn-primary flex-1 sm:!w-auto" onClick={() => setShowForm((v) => !v)}>
                 <Plus size={16} /> {showForm ? "Скрыть" : "Лекция"}
               </button>
             </div>
           </div>
         </div>
       </FadeIn>
-
-      {toast ? (
-        <div
-          className="mb-4 animate-toast rounded-[10px] px-4 py-3 text-sm"
-          style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-        >
-          {toast}
-        </div>
-      ) : null}
-
-      {showSchedule ? (
-        <FadeIn variant="fade-scale">
-          <form onSubmit={onAddSchedule} className="panel mb-6 grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
-            <div className="sm:col-span-2">
-              <p className="text-sm font-medium">Ориентир по расписанию</p>
-              <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-                Не жёсткое расписание — просто подсказка, когда обычно бывает пара. Можно менять позже.
-              </p>
-            </div>
-            <div>
-              <label className="label">День</label>
-              <select
-                className="input"
-                value={weekday}
-                onChange={(e) => setWeekday(Number(e.target.value))}
-              >
-                {WEEKDAYS.map((d, i) => (
-                  <option key={d} value={i}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Аудитория</label>
-              <input
-                className="input"
-                placeholder="Необязательно"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label">Начало</label>
-              <input
-                className="input"
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label">Конец</label>
-              <input
-                className="input"
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                className="btn-ghost sm:!w-auto"
-                disabled={busy}
-                onClick={() => setShowSchedule(false)}
-              >
-                Отмена
-              </button>
-              <button type="submit" className="btn-primary sm:!w-auto" disabled={busy}>
-                {busy ? "Сохраняем…" : "Добавить ориентир"}
-              </button>
-            </div>
-          </form>
-        </FadeIn>
-      ) : null}
 
       {showForm ? (
         <FadeIn variant="fade-scale">
@@ -270,6 +128,9 @@ function SubjectInner() {
                 onChange={(e) => setTopic(e.target.value)}
               />
             </div>
+            <p className="text-xs sm:col-span-2" style={{ color: "var(--fg-muted)" }}>
+              Дата подставится сама (сегодня). Время вводить не нужно.
+            </p>
             <div className="sm:col-span-2">
               <button className="btn-primary sm:!w-auto" disabled={busy}>
                 {busy ? "Создаём…" : "Создать и загрузить аудио"}

@@ -84,10 +84,42 @@ class SubjectOut(ORMModel):
     lecture_count: int = 0
 
 
+class SubjectImportPreviewIn(BaseModel):
+    text: str = Field(min_length=1, max_length=20_000)
+
+
+class SubjectImportItem(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    color: str | None = None
+    selected: bool = True
+
+
+class SubjectImportPreviewOut(BaseModel):
+    engine: str
+    items: list[SubjectImportItem]
+
+
+class SubjectImportConfirmIn(BaseModel):
+    items: list[SubjectImportItem] = Field(min_length=1, max_length=40)
+
+
 class LectureCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     topic: str | None = None
+    # Date-only preferred (YYYY-MM-DD). Time of day is ignored — students don't enter clock time.
     lecture_date: datetime | None = None
+
+
+class CalendarLectureOut(BaseModel):
+    id: int
+    title: str
+    topic: str | None
+    lecture_date: datetime | None
+    status: LectureStatus
+    subject_id: int
+    subject_name: str
+    subject_color: str
 
 
 class LectureUpdate(BaseModel):

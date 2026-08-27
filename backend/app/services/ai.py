@@ -699,3 +699,133 @@ async def chat_about_lecture(
             transcript=transcript,
             materials_text=materials_text,
         )
+
+
+SUBJECT_IMPORT_COLORS = [
+    "#1f5c57",
+    "#3a5570",
+    "#8a6828",
+    "#8f3a32",
+    "#5c4a7a",
+    "#2f6b4f",
+    "#6a645c",
+    "#1c4a6e",
+]
+
+SUBJECT_IMPORT_SYSTEM = """Ты помогаешь студенту разобрать список предметов.
+Из текста извлеки ТОЛЬКО названия учебных предметов / дисциплин.
+Игнорируй времена, аудитории, дни недели, ФИО преподавателей, номера групп.
+Не выдумывай предметы, которых нет в тексте.
+Ответ — строго JSON-массив объектов:
+[{"name":"Название","description":null}]
+description — только если в тексте явно есть короткая пометка (преподаватель/группа), иначе null.
+Без markdown, без пояснений."""
+
+
+def _extract_json_array(text: str) -> list | None:
+    import json
+
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, list) else None
+    except Exception:  # noqa: BLE001
+        pass
+    match = re.search(r"\[[\s\S]*\]", raw)
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(0))
+        return data if isinstance(data, list) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _heuristic_subjects_from_text(text: str) -> list[dict[str, str | None]]:
+    """Offline fallback: line-based subject names, ignore clock times."""
+    found: list[dict[str, str | None]] = []
+    seen: set[str] = set()
+    weekday = (
+        r"пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье"
+    )
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip().lstrip("•*-–—·\t ")
+        if not line:
+            continue
+        # Strip leading weekday / clock crumbs: "Пн 10:00 Философия"
+        line = re.sub(rf"^(?:{weekday})\b\s*[:.\-]?\s*", "", line, flags=re.I).strip()
+        line = re.sub(r"^\d{1,2}[:.]\d{2}(?:\s*[-–—]\s*\d{1,2}[:.]\d{2})?\s*", "", line).strip()
+        if not line:
+            continue
+        # Drop trailing time ranges / single times
+        line = re.sub(r"\s+\d{1,2}[:.]\d{2}\s*[-–—]\s*\d{1,2}[:.]\d{2}\b.*$", "", line).strip()
+        line = re.sub(r"\s+\d{1,2}[:.]\d{2}\b.*$", "", line).strip()
+        # Drop room crumbs
+        line = re.sub(r"\s+ауд\.?\s*\S+.*$", "", line, flags=re.I).strip()
+        name = re.split(r"\s{2,}|\t| — | – ", line, maxsplit=1)[0].strip(" .;:")
+        if len(name) < 2 or len(name) > 80:
+            continue
+        if re.fullmatch(r"[\d\W]+", name):
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append({"name": name, "description": None})
+    return found[:40]
+
+
+def _normalize_subject_items(items: list) -> list[dict[str, str | None]]:
+    out: list[dict[str, str | None]] = []
+    seen: set[str] = set()
+    for item in items:
+        if isinstance(item, str):
+            name, description = item, None
+        elif isinstance(item, dict):
+            name = str(item.get("name") or item.get("title") or "").strip()
+            desc = item.get("description")
+            description = str(desc).strip() if desc else None
+        else:
+            continue
+        if len(name) < 2 or len(name) > 255:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"name": name, "description": description or None})
+    return out[:40]
+
+
+async def parse_subjects_from_text(text: str) -> tuple[list[dict[str, str | None]], str]:
+    """
+    Return (subjects, engine_label).
+    Subjects have no schedule — floating timetables by design.
+    """
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return [], "empty"
+
+    fallback = _heuristic_subjects_from_text(cleaned)
+    try:
+        raw = await _chat(
+            SUBJECT_IMPORT_SYSTEM,
+            f"Текст студента:\n\n{cleaned[:8000]}",
+            temperature=0.1,
+            timeout=45.0,
+        )
+        parsed = _extract_json_array(raw)
+        items = _normalize_subject_items(parsed or [])
+        if items:
+            return items, "ai"
+        if fallback:
+            return fallback, "heuristic"
+        return [], "ai-empty"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("subject import AI failed, using heuristic: %s", exc)
+        return fallback, "heuristic"

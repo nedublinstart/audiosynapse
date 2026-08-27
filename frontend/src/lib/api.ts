@@ -86,6 +86,24 @@ export type ScheduleSuggestion = {
   suggested_title: string;
 };
 
+export type SubjectImportItem = {
+  name: string;
+  description: string | null;
+  color: string | null;
+  selected: boolean;
+};
+
+export type CalendarLecture = {
+  id: number;
+  title: string;
+  topic: string | null;
+  lecture_date: string | null;
+  status: LectureStatus;
+  subject_id: number;
+  subject_name: string;
+  subject_color: string;
+};
+
 class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -196,17 +214,19 @@ export const api = {
     semester_id?: number | null;
     schedule?: Omit<ScheduleSlot, "id">[];
   }) => request<Subject>("/api/subjects", { method: "POST", body: JSON.stringify(body) }),
+  previewSubjectImport: (text: string) =>
+    request<{ engine: string; items: SubjectImportItem[] }>("/api/subjects/import/preview", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+  confirmSubjectImport: (items: SubjectImportItem[]) =>
+    request<Subject[]>("/api/subjects/import", {
+      method: "POST",
+      body: JSON.stringify({ items }),
+    }),
   getSubject: (id: number) => request<Subject>(`/api/subjects/${id}`),
   deleteSubject: (id: number) =>
     request<void>(`/api/subjects/${id}`, { method: "DELETE" }),
-  addSchedule: (
-    subjectId: number,
-    body: Omit<ScheduleSlot, "id">,
-  ) =>
-    request<ScheduleSlot>(`/api/subjects/${subjectId}/schedule`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
   listLectures: (subjectId: number) =>
     request<Lecture[]>(`/api/subjects/${subjectId}/lectures`),
   createLecture: (
@@ -217,6 +237,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  calendar: (year: number, month: number) =>
+    request<CalendarLecture[]>(`/api/calendar?year=${year}&month=${month}`),
   getLecture: (id: number) => request<Lecture>(`/api/lectures/${id}`),
   deleteLecture: (id: number) =>
     request<void>(`/api/lectures/${id}`, { method: "DELETE" }),

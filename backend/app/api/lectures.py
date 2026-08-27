@@ -15,6 +15,7 @@ from app.models import ChatMessage, Lecture, LectureStatus, Material, Subject, U
 from app.schemas import (
     ChatMessageOut,
     ChatRequest,
+    CalendarLectureOut,
     LectureCreate,
     LectureDetailOut,
     LectureOut,
@@ -110,6 +111,18 @@ async def _process_lecture_pipeline(lecture_id: int) -> None:
     await run_lecture_pipeline(lecture_id)
 
 
+def _date_only_utc(value: datetime | None) -> datetime:
+    """Store lecture day without forcing the user to pick a clock time."""
+    if value is None:
+        now = datetime.now(timezone.utc)
+        return datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return datetime(value.year, value.month, value.day, tzinfo=timezone.utc)
+
+
 @router.post("/subjects/{subject_id}/lectures", response_model=LectureOut)
 def create_lecture(
     subject_id: int,
@@ -122,7 +135,7 @@ def create_lecture(
         subject_id=subject.id,
         title=payload.title.strip(),
         topic=payload.topic,
-        lecture_date=payload.lecture_date or datetime.now(timezone.utc),
+        lecture_date=_date_only_utc(payload.lecture_date),
         status=LectureStatus.awaiting_audio,
     )
     db.add(lecture)
@@ -411,42 +424,62 @@ async def chat(
     return ChatMessageOut.model_validate(assistant)
 
 
+@router.get("/calendar", response_model=list[CalendarLectureOut])
+def calendar_lectures(
+    year: int | None = None,
+    month: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[CalendarLectureOut]:
+    """Month grid data: lectures by day (no clock times)."""
+    now = datetime.now(timezone.utc)
+    y = year or now.year
+    m = month or now.month
+    if m < 1 or m > 12:
+        raise HTTPException(status_code=400, detail="Invalid month")
+    if m == 12:
+        start = datetime(y, m, 1, tzinfo=timezone.utc)
+        end = datetime(y + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        start = datetime(y, m, 1, tzinfo=timezone.utc)
+        end = datetime(y, m + 1, 1, tzinfo=timezone.utc)
+
+    rows = (
+        db.query(Lecture)
+        .join(Subject, Subject.id == Lecture.subject_id)
+        .options(joinedload(Lecture.subject))
+        .filter(
+            Subject.owner_id == user.id,
+            Lecture.lecture_date.isnot(None),
+            Lecture.lecture_date >= start,
+            Lecture.lecture_date < end,
+        )
+        .order_by(Lecture.lecture_date.asc(), Lecture.id.asc())
+        .all()
+    )
+    out: list[CalendarLectureOut] = []
+    for lecture in rows:
+        subject = lecture.subject
+        out.append(
+            CalendarLectureOut(
+                id=lecture.id,
+                title=lecture.title,
+                topic=lecture.topic,
+                lecture_date=lecture.lecture_date,
+                status=lecture.status,
+                subject_id=subject.id,
+                subject_name=subject.name,
+                subject_color=subject.color,
+            )
+        )
+    return out
+
+
 @router.get("/schedule/suggestions")
 def schedule_suggestions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
-    """Suggest creating lecture cards for subjects that had a class ending recently."""
-    now = datetime.now().astimezone()
-    weekday = now.weekday()
-    subjects = (
-        db.query(Subject)
-        .options(joinedload(Subject.schedule_slots))
-        .filter(Subject.owner_id == user.id)
-        .all()
-    )
-    suggestions: list[dict] = []
-    for subject in subjects:
-        for slot in subject.schedule_slots:
-            if slot.weekday != weekday:
-                continue
-            try:
-                end_h, end_m = map(int, slot.end_time.split(":"))
-            except ValueError:
-                continue
-            end_minutes = end_h * 60 + end_m
-            now_minutes = now.hour * 60 + now.minute
-            # Suggest within 3 hours after class end
-            if 0 <= now_minutes - end_minutes <= 180:
-                suggestions.append(
-                    {
-                        "subject_id": subject.id,
-                        "subject_name": subject.name,
-                        "weekday": slot.weekday,
-                        "start_time": slot.start_time,
-                        "end_time": slot.end_time,
-                        "location": slot.location,
-                        "suggested_title": f"Лекция {now.strftime('%d.%m')} — {subject.name}",
-                    }
-                )
-    return suggestions
+    """Deprecated soft hints — kept empty; schedules are floating by design."""
+    _ = db, user
+    return []

@@ -10,9 +10,15 @@ from app.schemas import (
     SemesterCreate,
     SemesterOut,
     SubjectCreate,
+    SubjectImportConfirmIn,
+    SubjectImportItem,
+    SubjectImportPreviewIn,
+    SubjectImportPreviewOut,
     SubjectOut,
     SubjectUpdate,
 )
+from app.services import ai
+from app.services.ai import SUBJECT_IMPORT_COLORS
 
 router = APIRouter(tags=["academics"])
 
@@ -45,6 +51,69 @@ def _subject_out(subject: Subject) -> SubjectOut:
     return data
 
 
+def _next_color(index: int) -> str:
+    return SUBJECT_IMPORT_COLORS[index % len(SUBJECT_IMPORT_COLORS)]
+
+
+@router.post("/subjects/import/preview", response_model=SubjectImportPreviewOut)
+async def preview_subject_import(
+    payload: SubjectImportPreviewIn,
+    user: User = Depends(get_current_user),
+) -> SubjectImportPreviewOut:
+    """AI (or heuristic) master: paste timetable / list → subject names, no schedule."""
+    _ = user
+    items, engine = await ai.parse_subjects_from_text(payload.text)
+    preview = [
+        SubjectImportItem(
+            name=item["name"],
+            description=item.get("description"),
+            color=_next_color(i),
+            selected=True,
+        )
+        for i, item in enumerate(items)
+    ]
+    return SubjectImportPreviewOut(engine=engine, items=preview)
+
+
+@router.post("/subjects/import", response_model=list[SubjectOut])
+def confirm_subject_import(
+    payload: SubjectImportConfirmIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[SubjectOut]:
+    """Bulk-create selected subjects without schedule slots."""
+    created_ids: list[int] = []
+    color_i = 0
+    for item in payload.items:
+        if not item.selected:
+            continue
+        name = item.name.strip()
+        if not name:
+            continue
+        subject = Subject(
+            name=name,
+            description=item.description,
+            color=item.color or _next_color(color_i),
+            owner_id=user.id,
+            semester_id=None,
+        )
+        color_i += 1
+        db.add(subject)
+        db.flush()
+        created_ids.append(subject.id)
+    if not created_ids:
+        raise HTTPException(status_code=400, detail="Не выбрано ни одного предмета")
+    db.commit()
+    rows = (
+        db.query(Subject)
+        .options(joinedload(Subject.schedule_slots), joinedload(Subject.lectures))
+        .filter(Subject.id.in_(created_ids), Subject.owner_id == user.id)
+        .order_by(Subject.id.asc())
+        .all()
+    )
+    return [_subject_out(r) for r in rows]
+
+
 @router.post("/subjects", response_model=SubjectOut)
 def create_subject(
     payload: SubjectCreate,
@@ -64,6 +133,7 @@ def create_subject(
     )
     db.add(subject)
     db.flush()
+    # Schedule is optional — floating timetables by design.
     for slot in payload.schedule:
         db.add(
             ScheduleSlot(

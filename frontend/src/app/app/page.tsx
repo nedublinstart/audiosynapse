@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { BookOpen, CalendarClock, ChevronRight, Layers, Plus, Sparkles } from "lucide-react";
+import { BookOpen, ChevronRight, Layers, Plus, Sparkles, Wand2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FadeIn } from "@/components/FadeIn";
 import { MagneticSurface } from "@/components/MagneticSurface";
+import { MonthCalendar } from "@/components/MonthCalendar";
 import { SubjectComposer } from "@/components/SubjectComposer";
-import { WEEKDAYS } from "@/components/StatusBadge";
-import { api, type ScheduleSuggestion, type Subject } from "@/lib/api";
+import { SubjectImportMaster } from "@/components/SubjectImportMaster";
+import { api, type CalendarLecture, type Subject } from "@/lib/api";
 
 function lectureLabel(count: number) {
   const mod10 = count % 10;
@@ -24,43 +25,49 @@ function lectureLabel(count: number) {
 function DashboardInner() {
   const router = useRouter();
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [suggestions, setSuggestions] = useState<ScheduleSuggestion[]>([]);
-  const [showComposer, setShowComposer] = useState(false);
+  const [calendarLectures, setCalendarLectures] = useState<CalendarLecture[]>([]);
+  const [calMonth, setCalMonth] = useState(() => new Date());
+  const [calLoading, setCalLoading] = useState(true);
+  const [mode, setMode] = useState<"none" | "create" | "import">("none");
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [loaded, setLoaded] = useState(false);
 
-  const load = useCallback(async () => {
-    const [s, sug] = await Promise.all([api.listSubjects(), api.suggestions()]);
+  const loadSubjects = useCallback(async () => {
+    const s = await api.listSubjects();
     setSubjects(s);
-    setSuggestions(sug);
     setLoaded(true);
   }, []);
 
+  const loadCalendar = useCallback(async (month: Date) => {
+    setCalLoading(true);
+    try {
+      const rows = await api.calendar(month.getFullYear(), month.getMonth() + 1);
+      setCalendarLectures(rows);
+    } finally {
+      setCalLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    void load().catch((e) => {
+    void loadSubjects().catch((e) => {
       setError(e.message);
       setLoaded(true);
     });
-  }, [load]);
+  }, [loadSubjects]);
+
+  useEffect(() => {
+    void loadCalendar(calMonth).catch((e) => {
+      setError(e.message);
+      setCalLoading(false);
+    });
+  }, [calMonth, loadCalendar]);
 
   useEffect(() => {
     if (!toast) return;
     const id = window.setTimeout(() => setToast(""), 4200);
     return () => window.clearTimeout(id);
   }, [toast]);
-
-  async function acceptSuggestion(s: ScheduleSuggestion) {
-    try {
-      const lecture = await api.createLecture(s.subject_id, {
-        title: s.suggested_title,
-        topic: s.subject_name,
-      });
-      router.push(`/app/lectures/${lecture.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось создать лекцию");
-    }
-  }
 
   const totalLectures = subjects.reduce((sum, s) => sum + s.lecture_count, 0);
 
@@ -73,7 +80,7 @@ function DashboardInner() {
               <p className="label mb-2 !tracking-[0.12em]">Главное меню</p>
               <h2 className="page-title text-2xl sm:text-[2rem]">Учебный процесс</h2>
               <p className="mt-2 max-w-lg text-sm leading-relaxed sm:text-[0.95rem]" style={{ color: "var(--fg-muted)" }}>
-                Предмет → лекция → аудио → конспект. Расписание можно не указывать — оно у всех плавает.
+                Предмет → лекция → аудио → конспект. Без стабильного расписания и без ввода времени.
               </p>
             </div>
             {loaded ? (
@@ -112,67 +119,72 @@ function DashboardInner() {
         </p>
       ) : null}
 
-      {suggestions.length > 0 ? (
-        <FadeIn delay={70} variant="fade-up" duration={820}>
-          <section className="panel mb-6 p-4 sm:p-5">
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-              <CalendarClock size={16} style={{ color: "var(--accent)" }} />
-              После пары можно сразу открыть карточку лекции
-            </div>
-            <div className="space-y-2">
-              {suggestions.map((s, i) => (
-                <FadeIn key={`${s.subject_id}-${s.end_time}`} delay={90 + i * 55} variant="fade-up">
-                  <div
-                    className="flex flex-col gap-3 rounded-[10px] px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-                    style={{ background: "var(--bg-soft)" }}
-                  >
-                    <div className="text-sm">
-                      <div className="font-medium">{s.subject_name}</div>
-                      <div style={{ color: "var(--fg-muted)" }}>
-                        {WEEKDAYS[s.weekday]} · {s.start_time}–{s.end_time}
-                        {s.location ? ` · ${s.location}` : ""}
-                      </div>
-                    </div>
-                    <button className="btn-primary sm:!w-auto" onClick={() => void acceptSuggestion(s)}>
-                      Создать лекцию
-                    </button>
-                  </div>
-                </FadeIn>
-              ))}
-            </div>
-          </section>
-        </FadeIn>
-      ) : null}
+      <FadeIn delay={60} variant="fade-up" duration={820}>
+        <div className="mb-6">
+          <MonthCalendar
+            lectures={calendarLectures}
+            month={calMonth}
+            onMonthChange={setCalMonth}
+            loading={calLoading}
+          />
+        </div>
+      </FadeIn>
 
       <FadeIn delay={100} variant="fade-up">
-        <div className="mb-5 flex items-end justify-between gap-3">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h3 className="page-title text-xl sm:text-2xl">Предметы</h3>
             <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-              Создайте предмет за 10 секунд — расписание не обязательно
+              Один предмет или импорт списком — расписание не спрашиваем
             </p>
           </div>
-          {!showComposer ? (
-            <button
-              className="btn-primary !min-h-10 shrink-0 !px-3 sm:!w-auto"
-              onClick={() => setShowComposer(true)}
-            >
-              <Plus size={16} />
-              <span className="hidden sm:inline">Предмет</span>
-            </button>
+          {mode === "none" ? (
+            <div className="flex gap-2">
+              <button
+                className="btn-outline !min-h-10 shrink-0 !px-3 sm:!w-auto"
+                onClick={() => setMode("import")}
+              >
+                <Wand2 size={16} />
+                <span className="hidden sm:inline">Импорт</span>
+              </button>
+              <button
+                className="btn-primary !min-h-10 shrink-0 !px-3 sm:!w-auto"
+                onClick={() => setMode("create")}
+              >
+                <Plus size={16} />
+                <span className="hidden sm:inline">Предмет</span>
+              </button>
+            </div>
           ) : null}
         </div>
       </FadeIn>
 
-      {showComposer ? (
+      {mode === "create" ? (
         <FadeIn variant="fade-scale" duration={680}>
           <SubjectComposer
-            onCancel={() => setShowComposer(false)}
+            onCancel={() => setMode("none")}
             onCreated={(subject) => {
-              setShowComposer(false);
+              setMode("none");
               setToast(`«${subject.name}» создан — можно добавлять лекции`);
-              void load();
+              void loadSubjects();
               router.push(`/app/subjects/${subject.id}`);
+            }}
+          />
+        </FadeIn>
+      ) : null}
+
+      {mode === "import" ? (
+        <FadeIn variant="fade-scale" duration={680}>
+          <SubjectImportMaster
+            onCancel={() => setMode("none")}
+            onImported={(created) => {
+              setMode("none");
+              setToast(
+                created.length === 1
+                  ? `«${created[0].name}» создан`
+                  : `Добавлено предметов: ${created.length}`,
+              );
+              void loadSubjects();
             }}
           />
         </FadeIn>
@@ -234,19 +246,13 @@ function DashboardInner() {
                     <span className="font-medium" style={{ color: "var(--fg)" }}>
                       {subject.lecture_count} {lectureLabel(subject.lecture_count)}
                     </span>
-                    <span className="truncate text-right">
-                      {subject.schedule_slots.length
-                        ? subject.schedule_slots
-                            .map((s) => `${WEEKDAYS[s.weekday]} ${s.start_time}`)
-                            .join(", ")
-                        : "Гибкое расписание"}
-                    </span>
+                    <span>Без расписания</span>
                   </div>
                 </Link>
               </MagneticSurface>
             </FadeIn>
           ))}
-          {!subjects.length && !showComposer ? (
+          {!subjects.length && mode === "none" ? (
             <FadeIn delay={160} variant="fade-scale" className="sm:col-span-2 lg:col-span-3">
               <div
                 className="panel flex flex-col items-center justify-center px-6 py-12 text-center sm:py-14"
@@ -262,18 +268,19 @@ function DashboardInner() {
                   <Sparkles size={22} />
                 </div>
                 <p className="mb-1 text-base font-medium" style={{ color: "var(--fg)" }}>
-                  Начните с первого предмета
+                  Начните с предметов
                 </p>
                 <p className="max-w-sm text-sm leading-relaxed">
-                  Достаточно названия. Расписание — по желанию. Дальше загрузите аудио лекции.
+                  Добавьте один предмет или вставьте весь список — расписание и время не нужны.
                 </p>
-                <button
-                  type="button"
-                  className="btn-primary mt-5 sm:!w-auto"
-                  onClick={() => setShowComposer(true)}
-                >
-                  <Plus size={16} /> Добавить предмет
-                </button>
+                <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                  <button type="button" className="btn-outline sm:!w-auto" onClick={() => setMode("import")}>
+                    <Wand2 size={16} /> Импорт через ИИ
+                  </button>
+                  <button type="button" className="btn-primary sm:!w-auto" onClick={() => setMode("create")}>
+                    <Plus size={16} /> Добавить предмет
+                  </button>
+                </div>
               </div>
             </FadeIn>
           ) : null}

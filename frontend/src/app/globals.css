@@ -435,6 +435,91 @@ html.dark body::after {
     transform: translateX(0);
   }
 
+
+  .month-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .month-cal-weekday {
+    text-align: center;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    padding: 0.15rem 0 0.35rem;
+  }
+
+  .month-cal-cell {
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: space-between;
+    border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+    background: color-mix(in srgb, var(--bg-soft) 55%, transparent);
+    padding: 0.35rem 0.4rem 0.4rem;
+    transition:
+      transform 0.28s var(--ease-spring),
+      border-color 0.28s var(--ease-expo),
+      background 0.28s var(--ease-expo),
+      box-shadow 0.28s var(--ease-expo);
+    min-height: 0;
+  }
+
+  .month-cal-cell[data-in-month="0"] {
+    opacity: 0.38;
+  }
+
+  .month-cal-cell[data-has="1"] {
+    background: color-mix(in srgb, var(--bg-elevated) 80%, var(--bg-soft));
+  }
+
+  .month-cal-cell[data-today="1"] {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
+
+  .month-cal-cell[data-selected="1"] {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+    background: color-mix(in srgb, var(--accent-soft) 55%, var(--bg-elevated));
+    transform: translateY(-1px);
+  }
+
+  .month-cal-cell:hover {
+    transform: translateY(-1px) scale(1.02);
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  }
+
+  .month-cal-daynum {
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1;
+    text-align: left;
+  }
+
+  .month-cal-dots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+    align-items: center;
+    min-height: 0.45rem;
+  }
+
+  .month-cal-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 999px;
+  }
+
+  .month-cal-more {
+    font-size: 0.58rem;
+    color: var(--fg-muted);
+    line-height: 1;
+  }
+
   .dashboard-hero {
     background:
       linear-gradient(
