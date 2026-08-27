@@ -3,26 +3,27 @@
 @tailwind utilities;
 
 :root {
-  --bg: #ece8e1;
-  --bg-elevated: #f7f4ee;
-  --bg-soft: #e2ddd4;
-  --fg: #1c1a17;
-  --fg-muted: #6a645c;
-  --border: #cfc8bc;
-  --accent: #1f5c57;
-  --accent-hover: #174843;
-  --accent-soft: #d5e4e1;
-  --accent-fg: #f4f7f6;
-  --danger: #8f3a32;
-  --warn: #8a6828;
-  --ready: #1f5c57;
-  --processing: #3a5570;
-  --awaiting: #7a746c;
-  --radius: 12px;
-  --shadow: 0 1px 0 rgba(28, 26, 23, 0.04), 0 10px 28px rgba(28, 26, 23, 0.05);
+  /* Cool light companion to the neon brand */
+  --bg: #e8eef2;
+  --bg-elevated: #f4f8fb;
+  --bg-soft: #d7e2ea;
+  --fg: #0b1218;
+  --fg-muted: #5a6b78;
+  --border: #b8c8d4;
+  --accent: #00c8c4;
+  --accent-hover: #00a8a5;
+  --accent-soft: #c8f3f2;
+  --accent-fg: #041012;
+  --danger: #c44a42;
+  --warn: #b8860b;
+  --ready: #00a8a5;
+  --processing: #3a7a9a;
+  --awaiting: #6a7a88;
+  --radius: 14px;
+  --shadow: 0 1px 0 rgba(11, 18, 24, 0.04), 0 12px 32px rgba(11, 18, 24, 0.06);
+  --glow: 0 0 24px color-mix(in srgb, var(--accent) 28%, transparent);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
-  /* Apple-like spring / presentation curves */
   --ease-apple: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
   --ease-press: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -34,22 +35,24 @@
 }
 
 html.dark {
-  --bg: #121410;
-  --bg-elevated: #1a1d18;
-  --bg-soft: #242821;
-  --fg: #ebe6dc;
-  --fg-muted: #9a9488;
-  --border: #2e332c;
-  --accent: #7eb8ae;
-  --accent-hover: #97c9c0;
-  --accent-soft: #24332f;
-  --accent-fg: #0f1412;
-  --danger: #e08b82;
-  --warn: #d2b46a;
-  --ready: #7eb8ae;
-  --processing: #8aa4bb;
-  --awaiting: #8a857c;
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 14px 36px rgba(0, 0, 0, 0.35);
+  /* Brand: pitch black + neon cyan neural S */
+  --bg: #05080c;
+  --bg-elevated: #0b1118;
+  --bg-soft: #121a24;
+  --fg: #e8f4f8;
+  --fg-muted: #7e93a3;
+  --border: #1c2836;
+  --accent: #00fff8;
+  --accent-hover: #5dfffa;
+  --accent-soft: #0a2a2c;
+  --accent-fg: #021012;
+  --danger: #ff7b72;
+  --warn: #e6c35c;
+  --ready: #00fff8;
+  --processing: #5aa8ff;
+  --awaiting: #6e8294;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 18px 48px rgba(0, 0, 0, 0.55);
+  --glow: 0 0 32px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 html {
@@ -71,7 +74,7 @@ body {
   overflow-x: hidden;
 }
 
-/* Atmospheric field + fine grain (not flat, not purple glow) */
+/* Atmospheric field — cyan neural haze on charcoal */
 body::before {
   content: "";
   position: fixed;
@@ -79,8 +82,9 @@ body::before {
   pointer-events: none;
   z-index: -2;
   background:
-    radial-gradient(900px 520px at 8% -8%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 62%),
-    radial-gradient(720px 420px at 96% 4%, color-mix(in srgb, #8b7355 10%, transparent), transparent 58%),
+    radial-gradient(920px 560px at 12% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 62%),
+    radial-gradient(720px 480px at 92% 8%, color-mix(in srgb, #2a6cff 10%, transparent), transparent 58%),
+    radial-gradient(640px 420px at 50% 110%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 55%),
     linear-gradient(180deg, color-mix(in srgb, var(--bg-elevated) 55%, transparent), transparent 42%),
     var(--bg);
 }
@@ -523,11 +527,14 @@ html.dark body::after {
   .dashboard-hero {
     background:
       linear-gradient(
-        135deg,
-        color-mix(in srgb, var(--accent) 8%, var(--bg-elevated)),
-        color-mix(in srgb, var(--bg-elevated) 94%, transparent)
+        145deg,
+        color-mix(in srgb, var(--accent) 10%, var(--bg-elevated)),
+        color-mix(in srgb, var(--bg-elevated) 92%, transparent)
       );
-    border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--accent) 12%, transparent),
+      0 0 40px color-mix(in srgb, var(--accent) 6%, transparent);
     transition:
       box-shadow var(--motion-slow) var(--ease-expo),
       transform var(--motion-slow) var(--ease-expo);
@@ -598,7 +605,7 @@ html.dark body::after {
   .ambient-orb--b {
     width: min(44vw, 340px);
     height: min(44vw, 340px);
-    background: color-mix(in srgb, #8b7355 22%, transparent);
+    background: color-mix(in srgb, #2a6cff 20%, transparent);
     top: 8%;
     right: -10%;
     animation: ambient-drift-alt 18s var(--ease-apple) infinite;
@@ -700,14 +707,26 @@ html.dark body::after {
 
   .btn-primary {
     @apply btn;
-    background: var(--accent);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 92%, white),
+      var(--accent)
+    );
     color: var(--accent-fg);
-    box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 22%, transparent);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+      0 8px 24px color-mix(in srgb, var(--accent) 28%, transparent);
   }
 
   .btn-primary:hover:not(:disabled) {
-    background: var(--accent-hover);
-    box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 28%, transparent);
+    background: linear-gradient(
+      135deg,
+      var(--accent-hover),
+      color-mix(in srgb, var(--accent) 80%, white)
+    );
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent),
+      0 12px 32px color-mix(in srgb, var(--accent) 38%, transparent);
   }
 
   .btn-ghost {
@@ -764,34 +783,65 @@ html.dark body::after {
   }
 
   .page-title {
-    font-family: var(--font-display), Georgia, serif;
-    font-weight: 560;
-    letter-spacing: -0.03em;
-    line-height: 1.15;
+    font-family: var(--font-display), system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1.1;
+  }
+
+  .brand-wordmark {
+    font-family: var(--font-display), system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.045em;
+    background: linear-gradient(
+      120deg,
+      var(--fg) 10%,
+      color-mix(in srgb, var(--accent) 75%, var(--fg)) 55%,
+      var(--accent) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 
   .brand-mark {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    border-radius: 9px;
-    background: linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--accent) 18%, var(--bg-elevated)),
-      var(--accent-soft)
-    );
-    color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+    width: 2.15rem;
+    height: 2.15rem;
+    border-radius: 11px;
+    padding: 0.2rem;
+    background:
+      radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--accent) 28%, transparent), transparent 55%),
+      linear-gradient(160deg, var(--bg-soft), var(--bg-elevated));
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--accent) 18%, transparent),
+      0 0 18px color-mix(in srgb, var(--accent) 16%, transparent);
     transition:
       transform 0.4s var(--ease-spring),
-      box-shadow 0.4s var(--ease-expo);
+      box-shadow 0.4s var(--ease-expo),
+      border-color 0.4s var(--ease-expo);
   }
 
   .brand-mark:hover {
-    transform: scale(1.06) rotate(-3deg);
-    box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 18%, transparent);
+    transform: scale(1.07) rotate(-2deg);
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--accent) 28%, transparent),
+      0 0 28px color-mix(in srgb, var(--accent) 32%, transparent);
+  }
+
+  .brand-mark--hero {
+    width: min(42vw, 11.5rem);
+    height: min(42vw, 11.5rem);
+    border-radius: 28px;
+    padding: 0.85rem;
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--accent) 25%, transparent),
+      0 0 60px color-mix(in srgb, var(--accent) 28%, transparent),
+      0 24px 64px rgba(0, 0, 0, 0.45);
   }
 }
 
@@ -802,17 +852,17 @@ html.dark body::after {
 }
 
 .note-prose h1 {
-  font-family: var(--font-display), Georgia, serif;
+  font-family: var(--font-display), system-ui, sans-serif;
   font-size: clamp(1.45rem, 1.2rem + 1vw, 1.95rem);
-  font-weight: 600;
+  font-weight: 700;
   margin: 0 0 0.85rem;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
 }
 
 .note-prose h2 {
-  font-family: var(--font-display), Georgia, serif;
+  font-family: var(--font-display), system-ui, sans-serif;
   font-size: clamp(1.15rem, 1.05rem + 0.45vw, 1.35rem);
-  font-weight: 600;
+  font-weight: 700;
   margin: 2rem 0 0.75rem;
   padding-bottom: 0.4rem;
   border-bottom: 1px solid var(--border);

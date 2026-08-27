@@ -1,24 +1,32 @@
 import type { Metadata, Viewport } from "next";
-import { Source_Serif_4, Onest } from "next/font/google";
+import { Unbounded, Manrope } from "next/font/google";
 import { AuthProvider } from "@/lib/auth";
 import { ThemeProvider } from "@/lib/theme";
 import "./globals.css";
 
-const display = Source_Serif_4({
+const display = Unbounded({
   subsets: ["latin", "cyrillic"],
   variable: "--font-display",
-  style: ["normal", "italic"],
+  weight: ["500", "600", "700"],
 });
 
-const sans = Onest({
+const sans = Manrope({
   subsets: ["latin", "cyrillic"],
   variable: "--font-sans",
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
   title: "Synapse — конспекты без шума",
   description:
-    "Аудиолекции и материалы превращаются в спокойные, методологически выверенные конспекты.",
+    "Аудиолекции и материалы превращаются в ясные конспекты. Без лишнего шума.",
+  icons: {
+    icon: [
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon.png", sizes: "48x48", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     title: "Synapse",
@@ -31,8 +39,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ece8e1" },
-    { media: "(prefers-color-scheme: dark)", color: "#121410" },
+    { media: "(prefers-color-scheme: light)", color: "#e8eef2" },
+    { media: "(prefers-color-scheme: dark)", color: "#05080c" },
   ],
 };
 

@@ -37,9 +37,9 @@ export default function LoginPage() {
       <FadeIn variant="hero" duration={1000}>
         <Link href="/" className="mb-8 inline-flex items-center gap-2.5">
           <span className="brand-mark">
-            <SynapseMark size={16} />
+            <SynapseMark size={22} priority />
           </span>
-          <span className="page-title text-xl">Synapse</span>
+          <span className="brand-wordmark text-xl">Synapse</span>
         </Link>
       </FadeIn>
 
@@ -47,7 +47,7 @@ export default function LoginPage() {
         <div className="panel p-5 sm:p-7">
           <h1 className="page-title mb-1 text-2xl sm:text-[1.75rem]">Вход</h1>
           <p className="mb-6 text-sm" style={{ color: "var(--fg-muted)" }}>
-            Спокойное пространство для лекций
+            Продолжайте учебный процесс в Synapse
           </p>
           <form onSubmit={onSubmit} className="space-y-4">
             <div>

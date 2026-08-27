@@ -702,14 +702,14 @@ async def chat_about_lecture(
 
 
 SUBJECT_IMPORT_COLORS = [
-    "#1f5c57",
-    "#3a5570",
-    "#8a6828",
-    "#8f3a32",
-    "#5c4a7a",
-    "#2f6b4f",
-    "#6a645c",
-    "#1c4a6e",
+    "#00c8c4",
+    "#2a6cff",
+    "#00a896",
+    "#5b8def",
+    "#1f9a8a",
+    "#4d7cff",
+    "#0d9488",
+    "#3b82f6",
 ]
 
 SUBJECT_IMPORT_SYSTEM = """Ты помогаешь студенту разобрать список предметов.

@@ -38,9 +38,9 @@ export default function RegisterPage() {
       <FadeIn variant="hero" duration={1000}>
         <Link href="/" className="mb-8 inline-flex items-center gap-2.5">
           <span className="brand-mark">
-            <SynapseMark size={16} />
+            <SynapseMark size={22} priority />
           </span>
-          <span className="page-title text-xl">Synapse</span>
+          <span className="brand-wordmark text-xl">Synapse</span>
         </Link>
       </FadeIn>
 
