@@ -10,8 +10,8 @@ import {
 import clsx from "clsx";
 
 /**
- * Soft magnetic hover — Apple-style depth without flashy 3D.
- * Tracks pointer and gently lifts / tilts the surface.
+ * Soft hover wrapper — intentionally invisible.
+ * Depth without the user noticing “effects”.
  */
 export function MagneticSurface({
   children,
@@ -19,8 +19,8 @@ export function MagneticSurface({
   style,
   href,
   as: Tag = "div",
-  strength = 8,
-  tilt = 4,
+  strength = 0,
+  tilt = 0,
 }: {
   children: ReactNode;
   className?: string;
@@ -35,6 +35,7 @@ export function MagneticSurface({
 
   const onMove = useCallback(
     (e: MouseEvent) => {
+      if (!strength && !tilt) return;
       const el = ref.current;
       if (!el) return;
       const reduce =
@@ -47,7 +48,7 @@ export function MagneticSurface({
         const rect = el.getBoundingClientRect();
         const x = (e.clientX - rect.left) / rect.width - 0.5;
         const y = (e.clientY - rect.top) / rect.height - 0.5;
-        el.style.transform = `translate3d(${x * strength}px, ${y * strength - 2}px, 0) rotateX(${-y * tilt}deg) rotateY(${x * tilt}deg)`;
+        el.style.transform = `translate3d(${x * strength}px, ${y * strength - 1}px, 0) rotateX(${-y * tilt}deg) rotateY(${x * tilt}deg)`;
       });
     },
     [strength, tilt],
