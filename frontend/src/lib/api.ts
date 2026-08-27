@@ -199,6 +199,14 @@ export const api = {
   getSubject: (id: number) => request<Subject>(`/api/subjects/${id}`),
   deleteSubject: (id: number) =>
     request<void>(`/api/subjects/${id}`, { method: "DELETE" }),
+  addSchedule: (
+    subjectId: number,
+    body: Omit<ScheduleSlot, "id">,
+  ) =>
+    request<ScheduleSlot>(`/api/subjects/${subjectId}/schedule`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   listLectures: (subjectId: number) =>
     request<Lecture[]>(`/api/subjects/${subjectId}/lectures`),
   createLecture: (

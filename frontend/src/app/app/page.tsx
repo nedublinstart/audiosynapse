@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState, type CSSProperties } from "react";
-import { BookOpen, CalendarClock, ChevronRight, Layers, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { BookOpen, CalendarClock, ChevronRight, Layers, Plus, Sparkles } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FadeIn } from "@/components/FadeIn";
 import { MagneticSurface } from "@/components/MagneticSurface";
+import { SubjectComposer } from "@/components/SubjectComposer";
 import { WEEKDAYS } from "@/components/StatusBadge";
 import { api, type ScheduleSuggestion, type Subject } from "@/lib/api";
 
@@ -20,16 +22,12 @@ function lectureLabel(count: number) {
 }
 
 function DashboardInner() {
+  const router = useRouter();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [suggestions, setSuggestions] = useState<ScheduleSuggestion[]>([]);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [weekday, setWeekday] = useState(0);
-  const [startTime, setStartTime] = useState("10:00");
-  const [endTime, setEndTime] = useState("11:30");
-  const [showForm, setShowForm] = useState(false);
+  const [showComposer, setShowComposer] = useState(false);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState("");
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
@@ -46,30 +44,22 @@ function DashboardInner() {
     });
   }, [load]);
 
-  async function onCreate(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await api.createSubject({
-        name,
-        description: description || undefined,
-        schedule: [{ weekday, start_time: startTime, end_time: endTime, location: null }],
-      });
-      setName("");
-      setDescription("");
-      setShowForm(false);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
-    } finally {
-      setBusy(false);
-    }
-  }
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(""), 4200);
+    return () => window.clearTimeout(id);
+  }, [toast]);
 
   async function acceptSuggestion(s: ScheduleSuggestion) {
-    await api.createLecture(s.subject_id, { title: s.suggested_title, topic: s.subject_name });
-    await load();
+    try {
+      const lecture = await api.createLecture(s.subject_id, {
+        title: s.suggested_title,
+        topic: s.subject_name,
+      });
+      router.push(`/app/lectures/${lecture.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось создать лекцию");
+    }
   }
 
   const totalLectures = subjects.reduce((sum, s) => sum + s.lecture_count, 0);
@@ -83,7 +73,7 @@ function DashboardInner() {
               <p className="label mb-2 !tracking-[0.12em]">Главное меню</p>
               <h2 className="page-title text-2xl sm:text-[2rem]">Учебный процесс</h2>
               <p className="mt-2 max-w-lg text-sm leading-relaxed sm:text-[0.95rem]" style={{ color: "var(--fg-muted)" }}>
-                Предметы, лекции и конспекты — всё в одном спокойном пространстве.
+                Предмет → лекция → аудио → конспект. Расписание можно не указывать — оно у всех плавает.
               </p>
             </div>
             {loaded ? (
@@ -107,12 +97,27 @@ function DashboardInner() {
         </section>
       </FadeIn>
 
+      {toast ? (
+        <div
+          className="mb-4 animate-toast rounded-[10px] px-4 py-3 text-sm"
+          style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+        >
+          {toast}
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="mb-4 animate-toast text-sm" style={{ color: "var(--danger)" }}>
+          {error}
+        </p>
+      ) : null}
+
       {suggestions.length > 0 ? (
         <FadeIn delay={70} variant="fade-up" duration={820}>
           <section className="panel mb-6 p-4 sm:p-5">
             <div className="mb-3 flex items-center gap-2 text-sm font-medium">
               <CalendarClock size={16} style={{ color: "var(--accent)" }} />
-              После пары можно создать карточку лекции
+              После пары можно сразу открыть карточку лекции
             </div>
             <div className="space-y-2">
               {suggestions.map((s, i) => (
@@ -144,86 +149,32 @@ function DashboardInner() {
           <div>
             <h3 className="page-title text-xl sm:text-2xl">Предметы</h3>
             <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-              Всё по полочкам — без лишнего шума
+              Создайте предмет за 10 секунд — расписание не обязательно
             </p>
           </div>
-          <button
-            className="btn-primary !min-h-10 shrink-0 !px-3 sm:!w-auto"
-            onClick={() => setShowForm((v) => !v)}
-          >
-            <Plus size={16} />
-            <span className="hidden sm:inline">{showForm ? "Скрыть" : "Предмет"}</span>
-          </button>
+          {!showComposer ? (
+            <button
+              className="btn-primary !min-h-10 shrink-0 !px-3 sm:!w-auto"
+              onClick={() => setShowComposer(true)}
+            >
+              <Plus size={16} />
+              <span className="hidden sm:inline">Предмет</span>
+            </button>
+          ) : null}
         </div>
       </FadeIn>
 
-      {showForm ? (
+      {showComposer ? (
         <FadeIn variant="fade-scale" duration={680}>
-          <form onSubmit={onCreate} className="panel mb-6 grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
-          <div className="sm:col-span-2">
-            <label className="label">Название</label>
-            <input
-              className="input"
-              required
-              placeholder="Высшая математика"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label">Описание</label>
-            <input
-              className="input"
-              placeholder="Необязательно"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label">День пары</label>
-            <select
-              className="input"
-              value={weekday}
-              onChange={(e) => setWeekday(Number(e.target.value))}
-            >
-              {WEEKDAYS.map((d, i) => (
-                <option key={d} value={i}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="label">Начало</label>
-              <input
-                className="input"
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label">Конец</label>
-              <input
-                className="input"
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-              />
-            </div>
-          </div>
-          {error ? (
-            <p className="sm:col-span-2 text-sm" style={{ color: "var(--danger)" }}>
-              {error}
-            </p>
-          ) : null}
-          <div className="sm:col-span-2">
-            <button className="btn-primary sm:!w-auto" disabled={busy}>
-              {busy ? "Сохраняем…" : "Создать предмет"}
-            </button>
-          </div>
-        </form>
+          <SubjectComposer
+            onCancel={() => setShowComposer(false)}
+            onCreated={(subject) => {
+              setShowComposer(false);
+              setToast(`«${subject.name}» создан — можно добавлять лекции`);
+              void load();
+              router.push(`/app/subjects/${subject.id}`);
+            }}
+          />
         </FadeIn>
       ) : null}
 
@@ -271,11 +222,14 @@ function DashboardInner() {
                     className="relative mb-4 line-clamp-2 min-h-[2.75rem] text-sm leading-relaxed"
                     style={{ color: "var(--fg-muted)" }}
                   >
-                    {subject.description || "Без описания"}
+                    {subject.description || "Можно сразу добавлять лекции"}
                   </p>
                   <div
                     className="relative flex items-center justify-between gap-2 border-t pt-3 text-xs"
-                    style={{ borderColor: "color-mix(in srgb, var(--border) 65%, transparent)", color: "var(--fg-muted)" }}
+                    style={{
+                      borderColor: "color-mix(in srgb, var(--border) 65%, transparent)",
+                      color: "var(--fg-muted)",
+                    }}
                   >
                     <span className="font-medium" style={{ color: "var(--fg)" }}>
                       {subject.lecture_count} {lectureLabel(subject.lecture_count)}
@@ -285,14 +239,14 @@ function DashboardInner() {
                         ? subject.schedule_slots
                             .map((s) => `${WEEKDAYS[s.weekday]} ${s.start_time}`)
                             .join(", ")
-                        : "Без расписания"}
+                        : "Гибкое расписание"}
                     </span>
                   </div>
                 </Link>
               </MagneticSurface>
             </FadeIn>
           ))}
-          {!subjects.length ? (
+          {!subjects.length && !showComposer ? (
             <FadeIn delay={160} variant="fade-scale" className="sm:col-span-2 lg:col-span-3">
               <div
                 className="panel flex flex-col items-center justify-center px-6 py-12 text-center sm:py-14"
@@ -305,18 +259,18 @@ function DashboardInner() {
                     color: "var(--accent)",
                   }}
                 >
-                  <BookOpen size={22} />
+                  <Sparkles size={22} />
                 </div>
                 <p className="mb-1 text-base font-medium" style={{ color: "var(--fg)" }}>
-                  Пока пусто
+                  Начните с первого предмета
                 </p>
                 <p className="max-w-sm text-sm leading-relaxed">
-                  Создайте первый предмет — например, «Философия» — и загрузите аудио лекции.
+                  Достаточно названия. Расписание — по желанию. Дальше загрузите аудио лекции.
                 </p>
                 <button
                   type="button"
                   className="btn-primary mt-5 sm:!w-auto"
-                  onClick={() => setShowForm(true)}
+                  onClick={() => setShowComposer(true)}
                 >
                   <Plus size={16} /> Добавить предмет
                 </button>
