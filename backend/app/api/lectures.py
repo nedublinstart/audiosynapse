@@ -445,7 +445,7 @@ async def chat(
     )
     history = [{"role": m.role, "content": m.content} for m in history_rows[:-1]]
     try:
-        answer = await ai.chat_about_lecture(
+        answer, source = await ai.chat_about_lecture(
             message=payload.message,
             exam_mode=payload.exam_mode,
             notes=lecture.notes_markdown or "",
@@ -455,7 +455,7 @@ async def chat(
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("chat endpoint failed lecture=%s", lecture_id)
-        answer = ai.offline_chat_reply(
+        answer, source = ai.offline_chat_reply(
             payload.message.strip(),
             exam_mode=payload.exam_mode,
             notes=lecture.notes_markdown or "",
@@ -467,6 +467,7 @@ async def chat(
         role="assistant",
         content=answer,
         exam_mode=payload.exam_mode,
+        source=source,
     )
     db.add(assistant)
     db.commit()

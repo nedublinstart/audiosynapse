@@ -86,6 +86,7 @@ class SubjectOut(ORMModel):
 
 class SubjectImportPreviewIn(BaseModel):
     text: str = Field(min_length=1, max_length=20_000)
+    with_schedule: bool = False
 
 
 class SubjectImportItem(BaseModel):
@@ -93,6 +94,7 @@ class SubjectImportItem(BaseModel):
     description: str | None = None
     color: str | None = None
     selected: bool = True
+    schedule: list[ScheduleSlotCreate] = []
 
 
 class SubjectImportPreviewOut(BaseModel):
@@ -170,6 +172,7 @@ class ChatMessageOut(ORMModel):
     role: str
     content: str
     exam_mode: bool
+    source: str = "ai"
     created_at: datetime
 
 

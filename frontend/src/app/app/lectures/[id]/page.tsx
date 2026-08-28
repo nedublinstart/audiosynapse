@@ -515,10 +515,15 @@ function LectureInner() {
               className="flex flex-col gap-2 border-b px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4"
               style={{ borderColor: "var(--border)" }}
             >
-              <div className="text-xs sm:text-sm" style={{ color: "var(--fg-muted)" }}>
-                Только материалы этой лекции
+              <div className="min-w-0">
+                <div className="text-xs font-medium sm:text-sm">Synapse Tutor</div>
+                <div className="truncate text-xs" style={{ color: "var(--fg-muted)" }}>
+                  {lecture.notes_markdown
+                    ? "Конспект и материалы этой лекции"
+                    : "Загрузите аудио или PDF — чат заработает по материалам"}
+                </div>
               </div>
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={examMode}
@@ -546,27 +551,69 @@ function LectureInner() {
               {chat.map((m) => (
                 <div
                   key={m.id}
-                  className="animate-chat-in max-w-[92%] rounded-[12px] px-3 py-2.5 text-sm sm:max-w-[85%]"
-                  style={{
-                    marginLeft: m.role === "user" ? "auto" : 0,
-                    background: m.role === "user" ? "var(--accent-soft)" : "var(--bg-soft)",
-                    color: "var(--fg)",
-                  }}
+                  className={`animate-chat-in max-w-[92%] sm:max-w-[85%] ${
+                    m.role === "user" ? "ml-auto" : ""
+                  }`}
                 >
-                  <MarkdownNotes content={m.content} animate={false} />
+                  {m.role === "assistant" ? (
+                    <div
+                      className="mb-1 flex flex-wrap items-center gap-2 text-[0.65rem] uppercase tracking-wide"
+                      style={{ color: "var(--fg-muted)" }}
+                    >
+                      <span>Synapse</span>
+                      {m.source === "offline" ? (
+                        <span
+                          className="rounded-full px-2 py-0.5 normal-case tracking-normal"
+                          style={{
+                            background: "color-mix(in srgb, var(--warn) 15%, transparent)",
+                            color: "var(--warn)",
+                          }}
+                        >
+                          по материалам
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <div
+                    className="rounded-[12px] px-3 py-2.5 text-sm"
+                    style={{
+                      background: m.role === "user" ? "var(--accent-soft)" : "var(--bg-soft)",
+                      color: "var(--fg)",
+                      border:
+                        m.role === "assistant"
+                          ? "1px solid color-mix(in srgb, var(--border) 80%, transparent)"
+                          : undefined,
+                    }}
+                  >
+                    <MarkdownNotes content={m.content} animate={false} />
+                  </div>
                 </div>
               ))}
-              {!chat.length && !chatLoadFailed ? <ChatEmptyState onHint={setMessage} /> : null}
+              {!chat.length && !chatLoadFailed ? (
+                <ChatEmptyState
+                  onHint={setMessage}
+                  hasNotes={Boolean(lecture.notes_markdown)}
+                  examMode={examMode}
+                />
+              ) : null}
               {busy ? (
-                <div
-                  className="animate-chat-in max-w-[85%] rounded-[12px] px-3 py-2.5 text-sm"
-                  style={{ background: "var(--bg-soft)", color: "var(--fg-muted)" }}
-                >
-                  <span
-                    className="processing-dot mr-2 inline-block h-2 w-2 rounded-full align-middle"
-                    style={{ background: "var(--processing)" }}
-                  />
-                  Synapse думает…
+                <div className="animate-chat-in max-w-[85%]">
+                  <div
+                    className="mb-1 text-[0.65rem] uppercase tracking-wide"
+                    style={{ color: "var(--fg-muted)" }}
+                  >
+                    Synapse
+                  </div>
+                  <div
+                    className="rounded-[12px] px-3 py-2.5 text-sm"
+                    style={{ background: "var(--bg-soft)", color: "var(--fg-muted)" }}
+                  >
+                    <span
+                      className="processing-dot mr-2 inline-block h-2 w-2 rounded-full align-middle"
+                      style={{ background: "var(--processing)" }}
+                    />
+                    {examMode ? "Готовлю вопрос…" : "Думаю над ответом…"}
+                  </div>
                 </div>
               ) : null}
               <div ref={chatEndRef} />
