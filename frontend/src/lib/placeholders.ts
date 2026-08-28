@@ -8,6 +8,17 @@ export function errorMessage(err: unknown, fallback: string): string {
 }
 
 export function chatSendErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 429) {
+      return err.message || "Слишком частые сообщения — подождите немного";
+    }
+    if (err.status === 409) {
+      return err.message || "Чат пока недоступен для этой лекции";
+    }
+    if (err.status === 400) {
+      return err.message || "Проверьте текст сообщения";
+    }
+  }
   if (isNetworkError(err)) {
     if (networkErrorVariant(err) === "timeout") {
       return "Ответ занял слишком много времени. Сформулируйте вопрос короче или повторите через минуту.";

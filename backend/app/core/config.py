@@ -75,6 +75,13 @@ class Settings(BaseSettings):
 
     max_upload_bytes: int = 500 * 1024 * 1024  # 500 MB
 
+    # Chat abuse protection
+    chat_max_message_chars: int = 2000
+    chat_min_interval_seconds: float = 1.5
+    chat_rate_window_seconds: float = 60.0
+    chat_rate_limit_per_window: int = 20
+    chat_max_history_messages: int = 40
+
 
 settings = Settings()
 settings.upload_dir.mkdir(parents=True, exist_ok=True)

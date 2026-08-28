@@ -22,6 +22,7 @@ from app.schemas import (
     LectureUpdate,
 )
 from app.services import ai
+from app.services.chat_guard import assert_chat_allowed, trim_chat_history_rows
 from app.services.documents import extract_text_from_file
 from app.services.pipeline import (
     ProcessingStage,
@@ -428,14 +429,15 @@ async def chat(
     user: User = Depends(get_current_user),
 ) -> ChatMessageOut:
     lecture = _get_owned_lecture(db, user, lecture_id)
-    user_msg = ChatMessage(
-        lecture_id=lecture.id,
-        role="user",
-        content=payload.message.strip(),
-        exam_mode=payload.exam_mode,
+    materials_text = _materials_text(lecture)
+    message = payload.message.strip()
+
+    assert_chat_allowed(
+        user_id=user.id,
+        lecture=lecture,
+        message=message,
+        materials_text=materials_text,
     )
-    db.add(user_msg)
-    db.commit()
 
     history_rows = (
         db.query(ChatMessage)
@@ -443,25 +445,38 @@ async def chat(
         .order_by(ChatMessage.created_at.asc())
         .all()
     )
-    history = [{"role": m.role, "content": m.content} for m in history_rows[:-1]]
+    history_rows = trim_chat_history_rows(
+        history_rows,
+        max_messages=settings.chat_max_history_messages,
+    )
+    history = [{"role": m.role, "content": m.content} for m in history_rows]
+
     try:
         answer, source = await ai.chat_about_lecture(
-            message=payload.message,
+            message=message,
             exam_mode=payload.exam_mode,
             notes=lecture.notes_markdown or "",
             transcript=lecture.transcript,
-            materials_text=_materials_text(lecture),
+            materials_text=materials_text,
             history=history,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("chat endpoint failed lecture=%s", lecture_id)
         answer, source = ai.offline_chat_reply(
-            payload.message.strip(),
+            message,
             exam_mode=payload.exam_mode,
             notes=lecture.notes_markdown or "",
             transcript=lecture.transcript,
-            materials_text=_materials_text(lecture),
+            materials_text=materials_text,
         )
+
+    user_msg = ChatMessage(
+        lecture_id=lecture.id,
+        role="user",
+        content=message,
+        exam_mode=payload.exam_mode,
+        source="user",
+    )
     assistant = ChatMessage(
         lecture_id=lecture.id,
         role="assistant",
@@ -469,6 +484,7 @@ async def chat(
         exam_mode=payload.exam_mode,
         source=source,
     )
+    db.add(user_msg)
     db.add(assistant)
     db.commit()
     db.refresh(assistant)
