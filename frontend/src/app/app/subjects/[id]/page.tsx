@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState, type CSSProperties } from "react";
-import { ArrowLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FadeIn } from "@/components/FadeIn";
@@ -14,6 +14,7 @@ import { SkeletonList } from "@/components/SkeletonList";
 import { StatePlaceholder } from "@/components/StatePlaceholder";
 import { api, type Lecture, type Subject } from "@/lib/api";
 import { errorMessage, placeholderForError } from "@/lib/placeholders";
+import { formatScheduleSlot } from "@/lib/schedule";
 import { isAutoLectureTitle, suggestLectureTitle } from "@/lib/lectureTitles";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -168,6 +169,20 @@ function SubjectInner() {
                 <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
                   {subject?.description || "Лекции и конспекты по этому предмету"}
                 </p>
+                {subject?.schedule_slots?.length ? (
+                  <ul className="mt-3 space-y-1">
+                    {subject.schedule_slots.map((slot) => (
+                      <li
+                        key={slot.id}
+                        className="flex items-center gap-1.5 text-xs"
+                        style={{ color: "var(--fg-muted)" }}
+                      >
+                        <CalendarDays size={12} style={{ color: "var(--accent)" }} />
+                        {formatScheduleSlot(slot)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">

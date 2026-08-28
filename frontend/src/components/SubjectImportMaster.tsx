@@ -1,22 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Wand2, X } from "lucide-react";
+import { CalendarDays, Sparkles, Wand2, X } from "lucide-react";
 import { api, isNetworkError, type Subject, type SubjectImportItem } from "@/lib/api";
 import { InlineAlert } from "@/components/InlineAlert";
 import { StatePlaceholder } from "@/components/StatePlaceholder";
+import { formatScheduleSlot } from "@/lib/schedule";
 import { errorMessage } from "@/lib/placeholders";
 
 type Props = {
   onCancel: () => void;
   onImported: (subjects: Subject[]) => void;
+  withSchedule?: boolean;
 };
 
-/**
- * Light AI import master — paste a list / timetable text,
- * review names, create subjects without schedule.
- */
-export function SubjectImportMaster({ onCancel, onImported }: Props) {
+export function SubjectImportMaster({ onCancel, onImported, withSchedule = false }: Props) {
   const [text, setText] = useState("");
   const [items, setItems] = useState<SubjectImportItem[] | null>(null);
   const [importEmpty, setImportEmpty] = useState(false);
@@ -27,7 +25,11 @@ export function SubjectImportMaster({ onCancel, onImported }: Props) {
 
   async function onPreview() {
     if (!text.trim()) {
-      setError("Вставьте список предметов или кусок расписания");
+      setError(
+        withSchedule
+          ? "Вставьте расписание на семестр"
+          : "Вставьте список предметов или кусок расписания",
+      );
       setImportEmpty(false);
       return;
     }
@@ -36,7 +38,7 @@ export function SubjectImportMaster({ onCancel, onImported }: Props) {
     setLastError(null);
     setImportEmpty(false);
     try {
-      const res = await api.previewSubjectImport(text.trim());
+      const res = await api.previewSubjectImport(text.trim(), withSchedule);
       if (!res.items.length) {
         setImportEmpty(true);
         setItems(null);
@@ -81,6 +83,10 @@ export function SubjectImportMaster({ onCancel, onImported }: Props) {
     );
   }
 
+  const placeholder = withSchedule
+    ? `Пн 10:00-11:30 Философия ауд. 301\nСр 10:00-11:30 Философия\nПн 12:00-13:30 Математический анализ\n\nМожно вставить расписание целиком — ИИ разберёт дни и время`
+    : `Философия\nАлгебра\nИстория России\n\nили кусок расписания — только названия предметов`;
+
   return (
     <div className="panel mb-6 overflow-hidden p-0">
       <div
@@ -92,12 +98,16 @@ export function SubjectImportMaster({ onCancel, onImported }: Props) {
             className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-[10px]"
             style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
           >
-            <Wand2 size={16} />
+            {withSchedule ? <CalendarDays size={16} /> : <Wand2 size={16} />}
           </span>
           <div>
-            <p className="text-sm font-medium">Импорт предметов</p>
+            <p className="text-sm font-medium">
+              {withSchedule ? "Импорт расписания на семестр" : "Импорт предметов"}
+            </p>
             <p className="text-xs" style={{ color: "var(--fg-muted)" }}>
-              Вставьте список или расписание — время и слоты ИИ отбросит
+              {withSchedule
+                ? "Дни недели, время и аудитории сохранятся для каждого предмета."
+                : "Только названия — без слотов расписания."}
             </p>
           </div>
         </div>
@@ -110,13 +120,23 @@ export function SubjectImportMaster({ onCancel, onImported }: Props) {
         {!items ? (
           <>
             {!text.trim() && !importEmpty && !error ? (
-              <StatePlaceholder inline compact variant="empty-import" />
+              <StatePlaceholder
+                inline
+                compact
+                variant={withSchedule ? "empty-import" : "empty-import"}
+                title={withSchedule ? "Вставьте расписание" : undefined}
+                message={
+                  withSchedule
+                    ? "Скопируйте расписание из деканата или LMS — понедельник, время, предмет."
+                    : undefined
+                }
+              />
             ) : null}
             <div>
               <label className="label">Текст</label>
               <textarea
                 className="input min-h-[9rem] resize-y font-mono text-[0.85rem] leading-relaxed"
-                placeholder={`Философия\nАлгебра\nИстория России\n\nили кусок расписания — дни и время можно не чистить`}
+                placeholder={placeholder}
                 value={text}
                 onChange={(e) => {
                   setText(e.target.value);
@@ -155,14 +175,15 @@ export function SubjectImportMaster({ onCancel, onImported }: Props) {
         ) : (
           <>
             <p className="text-xs" style={{ color: "var(--fg-muted)" }}>
-              Найдено {items.length}. Снимите галочки с лишнего — создадим без расписания
+              Найдено {items.length}. Снимите галочки с лишнего
+              {withSchedule ? " — расписание сохранится" : ""}
               {engine ? ` · ${engine === "ai" ? "ИИ" : "быстрый разбор"}` : ""}.
             </p>
             <ul className="space-y-2">
               {items.map((item, i) => (
                 <li key={`${item.name}-${i}`}>
                   <label
-                    className="flex cursor-pointer items-center gap-3 rounded-[12px] border px-3 py-2.5"
+                    className="flex cursor-pointer items-start gap-3 rounded-[12px] border px-3 py-2.5"
                     style={{
                       borderColor: item.selected
                         ? "color-mix(in srgb, var(--accent) 35%, var(--border))"
@@ -172,20 +193,27 @@ export function SubjectImportMaster({ onCancel, onImported }: Props) {
                   >
                     <input
                       type="checkbox"
-                      className="h-4 w-4 accent-[var(--accent)]"
+                      className="mt-1 h-4 w-4 accent-[var(--accent)]"
                       checked={item.selected}
                       onChange={() => toggle(i)}
                     />
                     <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
                       style={{ background: item.color || "var(--accent)" }}
                     />
-                    <span className="min-w-0">
+                    <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{item.name}</span>
                       {item.description ? (
                         <span className="block truncate text-xs" style={{ color: "var(--fg-muted)" }}>
                           {item.description}
                         </span>
+                      ) : null}
+                      {item.schedule?.length ? (
+                        <ul className="mt-1.5 space-y-0.5 text-xs" style={{ color: "var(--fg-muted)" }}>
+                          {item.schedule.map((slot, si) => (
+                            <li key={`${item.name}-slot-${si}`}>{formatScheduleSlot(slot)}</li>
+                          ))}
+                        </ul>
                       ) : null}
                     </span>
                   </label>

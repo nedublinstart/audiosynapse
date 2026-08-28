@@ -42,7 +42,7 @@ function DashboardInner() {
   const [calMonth, setCalMonth] = useState(() => new Date());
   const [calLoading, setCalLoading] = useState(true);
   const [calLoadError, setCalLoadError] = useState(false);
-  const [mode, setMode] = useState<"none" | "create" | "import">("none");
+  const [mode, setMode] = useState<"none" | "create" | "import" | "schedule">("none");
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState<unknown>(null);
   const [toast, setToast] = useState("");
@@ -193,6 +193,26 @@ function DashboardInner() {
         </FadeIn>
       ) : null}
 
+      {mode === "schedule" ? (
+        <FadeIn>
+          <div className="panel-reveal">
+            <SubjectImportMaster
+              withSchedule
+              onCancel={() => setMode("none")}
+              onImported={(created) => {
+                setMode("none");
+                setToast(
+                  created.length === 1
+                    ? `«${created[0].name}» с расписанием`
+                    : `Добавлено предметов: ${created.length}`,
+                );
+                void loadSubjects();
+              }}
+            />
+          </div>
+        </FadeIn>
+      ) : null}
+
       {mode === "import" ? (
         <FadeIn>
           <div className="panel-reveal">
@@ -265,7 +285,8 @@ function DashboardInner() {
               <StatePlaceholder
                 variant="empty-subjects"
                 actions={[
-                  { label: "Импорт через ИИ", onClick: () => setMode("import") },
+                  { label: "Расписание на семестр", onClick: () => setMode("schedule") },
+                  { label: "Импорт списком", onClick: () => setMode("import") },
                   { label: "Добавить предмет", onClick: () => setMode("create"), primary: true },
                 ]}
               />
