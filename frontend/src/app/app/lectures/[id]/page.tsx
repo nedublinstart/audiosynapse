@@ -33,7 +33,7 @@ import { StatePlaceholder } from "@/components/StatePlaceholder";
 import { TextReveal } from "@/components/TextReveal";
 import { api, isNetworkError, type ChatMessage, type Lecture } from "@/lib/api";
 import { MATERIAL_ACCEPT, MATERIAL_HINT } from "@/lib/fileFormats";
-import { placeholderForError } from "@/lib/placeholders";
+import { chatSendErrorMessage, placeholderForError } from "@/lib/placeholders";
 
 function LectureInner() {
   const params = useParams();
@@ -215,9 +215,12 @@ function LectureInner() {
     if (!message.trim() || busy) return;
     const text = message.trim();
     setMessage("");
+    setError("");
+    setLastError(null);
     setBusy(true);
+    const optimisticId = Date.now();
     const optimistic: ChatMessage = {
-      id: Date.now(),
+      id: optimisticId,
       role: "user",
       content: text,
       exam_mode: examMode,
@@ -227,17 +230,11 @@ function LectureInner() {
     try {
       const assistant = await api.chat(lectureId, text, examMode);
       setChat((prev) => [...prev, assistant]);
-    } catch {
-      const fallback: ChatMessage = {
-        id: Date.now() + 1,
-        role: "assistant",
-        content:
-          "Сейчас нет связи с сервером. Откройте вкладку «Конспект» — там уже есть материалы лекции. " +
-          "Когда интернет вернётся, задайте вопрос ещё раз.",
-        exam_mode: examMode,
-        created_at: new Date().toISOString(),
-      };
-      setChat((prev) => [...prev, fallback]);
+    } catch (err) {
+      setChat((prev) => prev.filter((m) => m.id !== optimisticId));
+      setMessage(text);
+      setLastError(err);
+      setError(chatSendErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -382,15 +379,20 @@ function LectureInner() {
         <InlineAlert
           error={error}
           err={lastError ?? undefined}
-          networkStub
+          networkStub={tab !== "chat"}
           onRetry={
-            lastError && isNetworkError(lastError)
+            tab === "chat"
               ? () => {
                   setError("");
                   setLastError(null);
-                  void retryLoad();
                 }
-              : undefined
+              : lastError && isNetworkError(lastError)
+                ? () => {
+                    setError("");
+                    setLastError(null);
+                    void retryLoad();
+                  }
+                : undefined
           }
         />
       ) : null}

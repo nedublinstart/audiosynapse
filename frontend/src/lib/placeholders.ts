@@ -7,6 +7,16 @@ export function errorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
+export function chatSendErrorMessage(err: unknown): string {
+  if (isNetworkError(err)) {
+    if (networkErrorVariant(err) === "timeout") {
+      return "Ответ занял слишком много времени. Сформулируйте вопрос короче или повторите через минуту.";
+    }
+    return "Сервер не ответил. Убедитесь, что запущен npm run dev, и отправьте вопрос снова.";
+  }
+  return errorMessage(err, "Не удалось отправить сообщение в чат");
+}
+
 export function placeholderForError(err: unknown): PlaceholderVariant {
   if (isNetworkError(err)) {
     return networkErrorVariant(err) === "timeout" ? "timeout" : "network";
