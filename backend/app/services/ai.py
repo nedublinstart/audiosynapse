@@ -499,25 +499,31 @@ def _offline_chat_reply(
             "1. Назовите 3 ключевых термина из конспекта.\n"
             "2. Объясните один термин своими словами.\n"
             "3. Приведите пример применения идеи из лекции.\n"
-            "4. Что в материале раскрыто слабо и что дочитать?"
+            "4. Что в материале раскрыто слабо и что дочитать?\n\n"
+            "_Ответ собран по материалам лекции (ИИ временно недоступен)._"
         )
 
     keywords = [tok for tok in re.split(r"\W+", lowered) if len(tok) > 3]
-    matches: list[str] = []
+    scored: list[tuple[int, str]] = []
     for line in haystack.splitlines():
         low = line.lower()
-        if any(tok in low for tok in keywords):
-            stripped = line.strip()
-            if len(stripped) > 15:
-                matches.append(stripped)
-        if len(matches) >= 5:
-            break
+        score = sum(1 for tok in keywords if tok in low)
+        stripped = line.strip()
+        if score > 0 and len(stripped) > 15:
+            scored.append((score, stripped))
+    scored.sort(key=lambda x: (-x[0], -len(x[1])))
+    matches = [line for _, line in scored[:5]]
+
     if not matches:
-        matches = [ln.strip() for ln in haystack.splitlines() if len(ln.strip()) > 40][:3]
+        matches = [ln.strip() for ln in haystack.splitlines() if len(ln.strip()) > 40][:4]
 
     if matches:
-        body = "\n\n".join(matches)
-        return f"По материалам лекции:\n\n{body}"
+        body = "\n\n".join(f"• {m}" for m in matches)
+        return (
+            f"**По материалам лекции** (поиск по ключевым словам):\n\n{body}\n\n"
+            "_ИИ сейчас недоступен — показаны фрагменты из конспекта. "
+            "Задайте более конкретный вопрос или повторите позже._"
+        )
 
     return (
         "В материалах этой лекции пока нет текста, по которому можно ответить.\n\n"
@@ -721,13 +727,16 @@ def offline_chat_reply(
     notes: str,
     transcript: str | None,
     materials_text: str,
-) -> str:
-    return _offline_chat_reply(
-        message,
-        exam_mode=exam_mode,
-        notes=notes,
-        transcript=transcript,
-        materials_text=materials_text,
+) -> tuple[str, str]:
+    return (
+        _offline_chat_reply(
+            message,
+            exam_mode=exam_mode,
+            notes=notes,
+            transcript=transcript,
+            materials_text=materials_text,
+        ),
+        "offline",
     )
 
 
@@ -739,20 +748,26 @@ async def chat_about_lecture(
     transcript: str | None,
     materials_text: str,
     history: list[dict[str, str]],
-) -> str:
+) -> tuple[str, str]:
     if _is_greeting(message) and len(message.strip()) < 48:
         return (
             "Привет! Я Synapse — задавай вопросы по конспекту, транскрипту "
             "или материалам этой лекции. Включи режим «Экзамен», если хочешь "
-            "проверку по Bloom."
+            "проверку по Bloom.",
+            "greeting",
         )
 
     system = EXAM_SYSTEM_PROMPT if exam_mode else CHAT_SYSTEM_PROMPT
     notes_block = _trim_chat(notes, MAX_CHAT_NOTES_CHARS) or "(конспект ещё не готов)"
-    if notes and len(notes.strip()) > 800:
-        transcript_block = "(полный транскрипт опущен — используй развёрнутый конспект выше)"
+    transcript_trimmed = _trim_chat(transcript, MAX_CHAT_TRANSCRIPT_CHARS)
+    if notes and len(notes.strip()) > 800 and transcript_trimmed:
+        transcript_block = (
+            f"(краткий фрагмент транскрипта для уточнений)\n{_trim_chat(transcript, 4000)}"
+        )
+    elif transcript_trimmed:
+        transcript_block = transcript_trimmed
     else:
-        transcript_block = _trim_chat(transcript, MAX_CHAT_TRANSCRIPT_CHARS) or "(нет)"
+        transcript_block = "(нет)"
     materials_block = _trim_chat(materials_text, MAX_CHAT_MATERIALS_CHARS) or "(нет)"
     history_txt = _trim_history(history) or "(пусто)"
 
@@ -772,15 +787,16 @@ async def chat_about_lecture(
 {message}
 """
     try:
-        return await _chat(
+        content = await _chat(
             system,
             user_prompt,
-            temperature=0.4,
+            temperature=0.35,
             timeout=settings.ai_chat_timeout_seconds,
         )
+        return content, "ai"
     except Exception as exc:  # noqa: BLE001
         logger.error("chat failed: %s", exc)
-        return _offline_chat_reply(
+        return offline_chat_reply(
             message,
             exam_mode=exam_mode,
             notes=notes,
@@ -809,6 +825,17 @@ SUBJECT_IMPORT_SYSTEM = """Ты помогаешь студенту разобр
 description — только если в тексте явно есть короткая пометка (преподаватель/группа), иначе null.
 Без markdown, без пояснений."""
 
+SUBJECT_SCHEDULE_IMPORT_SYSTEM = """Ты разбираешь расписание занятий вуза на семестр.
+Из текста извлеки предметы и их еженедельные пары (день недели + время).
+weekday: 0=понедельник, 1=вторник, 2=среда, 3=четверг, 4=пятница, 5=суббота, 6=воскресенье.
+start_time и end_time — формат HH:MM (24 часа).
+Объедини строки одного предмета в один объект с массивом schedule.
+Не выдумывай предметы и пары, которых нет в тексте.
+Ответ — строго JSON-массив:
+[{"name":"Философия","description":null,"schedule":[{"weekday":0,"start_time":"10:00","end_time":"11:30","location":"ауд. 301"}]}]
+location — только если указана аудитория, иначе null.
+Без markdown, без пояснений."""
+
 
 def _extract_json_array(text: str) -> list | None:
     import json
@@ -832,6 +859,86 @@ def _extract_json_array(text: str) -> list | None:
         return data if isinstance(data, list) else None
     except Exception:  # noqa: BLE001
         return None
+
+
+def _parse_weekday_token(token: str) -> int | None:
+    key = token.strip().casefold()
+    mapping = {
+        "пн": 0, "понедельник": 0, "mon": 0,
+        "вт": 1, "вторник": 1, "tue": 1,
+        "ср": 2, "среда": 2, "wed": 2,
+        "чт": 3, "четверг": 3, "thu": 3,
+        "пт": 4, "пятница": 4, "fri": 4,
+        "сб": 5, "суббота": 5, "sat": 5,
+        "вс": 6, "воскресенье": 6, "sun": 6,
+    }
+    return mapping.get(key)
+
+
+def _normalize_time(value: str) -> str:
+    value = value.strip().replace(".", ":")
+    if re.fullmatch(r"\d{1,2}:\d{2}", value):
+        h, m = value.split(":")
+        return f"{int(h):02d}:{m}"
+    return value
+
+
+def _heuristic_subjects_with_schedule(text: str) -> list[dict]:
+    weekday_re = (
+        r"(?P<wd>пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье)"
+    )
+    time_re = r"(?P<t1>\d{1,2}[:.]\d{2})\s*(?:[-–—]\s*(?P<t2>\d{1,2}[:.]\d{2}))?"
+    subjects: dict[str, dict] = {}
+
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        wd_match = re.search(weekday_re, line, flags=re.I)
+        if not wd_match:
+            continue
+        weekday = _parse_weekday_token(wd_match.group("wd"))
+        if weekday is None:
+            continue
+        time_match = re.search(time_re, line)
+        if not time_match:
+            continue
+        start = _normalize_time(time_match.group("t1"))
+        end = _normalize_time(time_match.group("t2") or start)
+        if start == end:
+            h, m = map(int, start.split(":"))
+            end_m = h * 60 + m + 90
+            end = f"{end_m // 60:02d}:{end_m % 60:02d}"
+
+        rest = line[wd_match.end() :]
+        if time_match:
+            rest = rest.replace(time_match.group(0), " ", 1)
+        rest = re.sub(r"\s+", " ", rest).strip()
+        loc_match = re.search(r"(?:ауд\.?|каб\.?|комн\.?)\s*[\w\-./]+", rest, flags=re.I)
+        location = loc_match.group(0).strip() if loc_match else None
+        if loc_match:
+            rest = rest.replace(loc_match.group(0), " ").strip()
+        name = re.split(r"\s{2,}|\t| — | – ", rest, maxsplit=1)[0].strip(" .;:")
+        if len(name) < 2 or len(name) > 80:
+            continue
+        key = name.casefold()
+        if key not in subjects:
+            subjects[key] = {"name": name, "description": None, "schedule": []}
+        subjects[key]["schedule"].append(
+            {"weekday": weekday, "start_time": start, "end_time": end, "location": location}
+        )
+
+    return list(subjects.values())[:40]
+
+
+def heuristic_subjects_with_schedule_from_text(text: str) -> list[dict]:
+    scheduled = _heuristic_subjects_with_schedule(text)
+    if scheduled:
+        return scheduled
+    return [
+        {"name": row["name"], "description": row.get("description"), "schedule": []}
+        for row in _heuristic_subjects_from_text(text)
+    ]
 
 
 def heuristic_subjects_from_text(text: str) -> list[dict[str, str | None]]:
@@ -873,16 +980,45 @@ def _heuristic_subjects_from_text(text: str) -> list[dict[str, str | None]]:
     return found[:40]
 
 
-def _normalize_subject_items(items: list) -> list[dict[str, str | None]]:
-    out: list[dict[str, str | None]] = []
+def _normalize_subject_items(items: list, *, with_schedule: bool = False) -> list[dict]:
+    out: list[dict] = []
     seen: set[str] = set()
     for item in items:
+        schedule: list[dict] = []
         if isinstance(item, str):
             name, description = item, None
         elif isinstance(item, dict):
             name = str(item.get("name") or item.get("title") or "").strip()
             desc = item.get("description")
             description = str(desc).strip() if desc else None
+            if with_schedule and isinstance(item.get("schedule"), list):
+                for slot in item["schedule"]:
+                    if not isinstance(slot, dict):
+                        continue
+                    wd = slot.get("weekday")
+                    if wd is None:
+                        continue
+                    try:
+                        weekday = int(wd)
+                    except (TypeError, ValueError):
+                        continue
+                    if weekday < 0 or weekday > 6:
+                        continue
+                    start = _normalize_time(str(slot.get("start_time") or ""))
+                    end = _normalize_time(str(slot.get("end_time") or start))
+                    if not re.fullmatch(r"\d{2}:\d{2}", start):
+                        continue
+                    if not re.fullmatch(r"\d{2}:\d{2}", end):
+                        end = start
+                    loc = slot.get("location")
+                    schedule.append(
+                        {
+                            "weekday": weekday,
+                            "start_time": start,
+                            "end_time": end,
+                            "location": str(loc).strip() if loc else None,
+                        }
+                    )
         else:
             continue
         if len(name) < 2 or len(name) > 255:
@@ -891,29 +1027,41 @@ def _normalize_subject_items(items: list) -> list[dict[str, str | None]]:
         if key in seen:
             continue
         seen.add(key)
-        out.append({"name": name, "description": description or None})
+        row: dict = {"name": name, "description": description or None}
+        if with_schedule and schedule:
+            row["schedule"] = schedule
+        out.append(row)
     return out[:40]
 
 
-async def parse_subjects_from_text(text: str) -> tuple[list[dict[str, str | None]], str]:
+async def parse_subjects_from_text(
+    text: str,
+    *,
+    with_schedule: bool = False,
+) -> tuple[list[dict], str]:
     """
     Return (subjects, engine_label).
-    Subjects have no schedule — floating timetables by design.
+    with_schedule=True keeps weekday/time slots from timetable text.
     """
     cleaned = (text or "").strip()
     if not cleaned:
         return [], "empty"
 
-    fallback = _heuristic_subjects_from_text(cleaned)
+    if with_schedule:
+        fallback = heuristic_subjects_with_schedule_from_text(cleaned)
+    else:
+        fallback = _heuristic_subjects_from_text(cleaned)
+
+    system = SUBJECT_SCHEDULE_IMPORT_SYSTEM if with_schedule else SUBJECT_IMPORT_SYSTEM
     try:
         raw = await _chat(
-            SUBJECT_IMPORT_SYSTEM,
+            system,
             f"Текст студента:\n\n{cleaned[:8000]}",
             temperature=0.1,
             timeout=45.0,
         )
         parsed = _extract_json_array(raw)
-        items = _normalize_subject_items(parsed or [])
+        items = _normalize_subject_items(parsed or [], with_schedule=with_schedule)
         if items:
             return items, "ai"
         if fallback:

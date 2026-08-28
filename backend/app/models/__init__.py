@@ -135,6 +135,7 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(32))  # user | assistant
     content: Mapped[str] = mapped_column(Text)
     exam_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    source: Mapped[str] = mapped_column(String(16), default="ai")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     lecture: Mapped["Lecture"] = relationship(back_populates="chat_messages")

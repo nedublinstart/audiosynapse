@@ -16,6 +16,7 @@ import { SkeletonPills, SkeletonSubjectGrid } from "@/components/SkeletonList";
 import { StatePlaceholder } from "@/components/StatePlaceholder";
 import { api, isNetworkError, type CalendarLecture, type Subject } from "@/lib/api";
 import { errorMessage } from "@/lib/placeholders";
+import { formatScheduleSlot } from "@/lib/schedule";
 
 function subjectLabel(count: number) {
   const mod10 = count % 10;
@@ -42,7 +43,7 @@ function DashboardInner() {
   const [calMonth, setCalMonth] = useState(() => new Date());
   const [calLoading, setCalLoading] = useState(true);
   const [calLoadError, setCalLoadError] = useState(false);
-  const [mode, setMode] = useState<"none" | "create" | "import">("none");
+  const [mode, setMode] = useState<"none" | "create" | "import" | "schedule">("none");
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState<unknown>(null);
   const [toast, setToast] = useState("");
@@ -108,7 +109,7 @@ function DashboardInner() {
               <p className="label mb-2 !tracking-[0.12em]">Главное меню</p>
               <h2 className="page-title text-2xl sm:text-[2rem]">Учебный процесс</h2>
               <p className="mt-2 max-w-lg text-sm leading-relaxed sm:text-[0.95rem]" style={{ color: "var(--fg-muted)" }}>
-                Предмет → лекция → аудио → конспект. Без стабильного расписания и без ввода времени.
+                Предмет → лекция → аудио → конспект. Можно сразу указать расписание на семестр.
               </p>
             </div>
             {loaded ? (
@@ -164,7 +165,7 @@ function DashboardInner() {
           <div>
             <h3 className="page-title text-xl sm:text-2xl">Предметы</h3>
             <p className="mt-1 text-sm" style={{ color: "var(--fg-muted)" }}>
-              Один предмет или импорт списком — расписание не спрашиваем
+              Один предмет, импорт списком или расписание на семестр
             </p>
           </div>
           {subjects.length > 0 ? (
@@ -187,6 +188,39 @@ function DashboardInner() {
                 setToast(`«${subject.name}» создан — можно добавлять лекции`);
                 void loadSubjects();
                 router.push(`/app/subjects/${subject.id}?new=1`);
+              }}
+            />
+          </div>
+        </FadeIn>
+      ) : null}
+
+      {mode === "schedule" ? (
+        <FadeIn>
+          <div className="panel-reveal space-y-4">
+            <SubjectComposer
+              withSchedule
+              onCancel={() => setMode("none")}
+              onCreated={(subject) => {
+                setMode("none");
+                setToast(`«${subject.name}» с расписанием — можно добавлять лекции`);
+                void loadSubjects();
+                router.push(`/app/subjects/${subject.id}?new=1`);
+              }}
+            />
+            <p className="text-center text-xs" style={{ color: "var(--fg-muted)" }}>
+              или импортируйте всё расписание семестра из текста
+            </p>
+            <SubjectImportMaster
+              withSchedule
+              onCancel={() => setMode("none")}
+              onImported={(created) => {
+                setMode("none");
+                setToast(
+                  created.length === 1
+                    ? `«${created[0].name}» с расписанием`
+                    : `Добавлено предметов: ${created.length}`,
+                );
+                void loadSubjects();
               }}
             />
           </div>
@@ -256,7 +290,14 @@ function DashboardInner() {
                 <span className="font-medium" style={{ color: "var(--fg)" }}>
                   {subject.lecture_count} {lectureLabel(subject.lecture_count)}
                 </span>
-                <span>Без расписания</span>
+                <span>
+                  {subject.schedule_slots?.length
+                    ? subject.schedule_slots
+                        .slice(0, 2)
+                        .map((s) => formatScheduleSlot(s))
+                        .join(" · ")
+                    : "Без расписания"}
+                </span>
               </div>
             </Link>
           ))}
@@ -265,7 +306,8 @@ function DashboardInner() {
               <StatePlaceholder
                 variant="empty-subjects"
                 actions={[
-                  { label: "Импорт через ИИ", onClick: () => setMode("import") },
+                  { label: "Расписание на семестр", onClick: () => setMode("schedule") },
+                  { label: "Импорт списком", onClick: () => setMode("import") },
                   { label: "Добавить предмет", onClick: () => setMode("create"), primary: true },
                 ]}
               />
