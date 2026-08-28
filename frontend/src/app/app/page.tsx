@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { BookOpen, ChevronRight, Layers, Plus, Wand2 } from "lucide-react";
+import { BookOpen, ChevronRight, Layers } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FadeIn } from "@/components/FadeIn";
 import { MonthCalendar } from "@/components/MonthCalendar";
 import { SubjectComposer } from "@/components/SubjectComposer";
 import { SubjectImportMaster } from "@/components/SubjectImportMaster";
+import { SubjectAddHub } from "@/components/SubjectAddHub";
 import { ErrorPanel, InlineAlert } from "@/components/InlineAlert";
 import { SkeletonPills, SkeletonSubjectGrid } from "@/components/SkeletonList";
 import { StatePlaceholder } from "@/components/StatePlaceholder";
@@ -166,55 +167,48 @@ function DashboardInner() {
               Один предмет или импорт списком — расписание не спрашиваем
             </p>
           </div>
-          {mode === "none" ? (
-            <div className="flex gap-2">
-              <button
-                className="btn-outline !min-h-10 shrink-0 !px-3 sm:!w-auto"
-                onClick={() => setMode("import")}
-              >
-                <Wand2 size={16} />
-                <span className="hidden sm:inline">Импорт</span>
-              </button>
-              <button
-                className="btn-primary !min-h-10 shrink-0 !px-3 sm:!w-auto"
-                onClick={() => setMode("create")}
-              >
-                <Plus size={16} />
-                <span className="hidden sm:inline">Предмет</span>
-              </button>
-            </div>
+          {subjects.length > 0 ? (
+            <SubjectAddHub mode={mode} onModeChange={setMode} compact />
           ) : null}
         </div>
       </FadeIn>
 
+      {subjects.length === 0 && mode === "none" ? (
+        <SubjectAddHub mode={mode} onModeChange={setMode} />
+      ) : null}
+
       {mode === "create" ? (
         <FadeIn>
-          <SubjectComposer
-            onCancel={() => setMode("none")}
-            onCreated={(subject) => {
-              setMode("none");
-              setToast(`«${subject.name}» создан — можно добавлять лекции`);
-              void loadSubjects();
-              router.push(`/app/subjects/${subject.id}`);
-            }}
-          />
+          <div className="panel-reveal">
+            <SubjectComposer
+              onCancel={() => setMode("none")}
+              onCreated={(subject) => {
+                setMode("none");
+                setToast(`«${subject.name}» создан — можно добавлять лекции`);
+                void loadSubjects();
+                router.push(`/app/subjects/${subject.id}?new=1`);
+              }}
+            />
+          </div>
         </FadeIn>
       ) : null}
 
       {mode === "import" ? (
         <FadeIn>
-          <SubjectImportMaster
-            onCancel={() => setMode("none")}
-            onImported={(created) => {
-              setMode("none");
-              setToast(
-                created.length === 1
-                  ? `«${created[0].name}» создан`
-                  : `Добавлено предметов: ${created.length}`,
-              );
-              void loadSubjects();
-            }}
-          />
+          <div className="panel-reveal">
+            <SubjectImportMaster
+              onCancel={() => setMode("none")}
+              onImported={(created) => {
+                setMode("none");
+                setToast(
+                  created.length === 1
+                    ? `«${created[0].name}» создан`
+                    : `Добавлено предметов: ${created.length}`,
+                );
+                void loadSubjects();
+              }}
+            />
+          </div>
         </FadeIn>
       ) : null}
 

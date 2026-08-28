@@ -92,6 +92,29 @@ def _materials_text(lecture: Lecture) -> str:
     return "\n\n".join(m.extracted_text for m in lecture.materials if m.extracted_text)
 
 
+def _notes_context(db: Session, lecture: Lecture) -> dict[str, str | int]:
+    subject = lecture.subject
+    prior = (
+        db.query(Lecture)
+        .filter(Lecture.subject_id == lecture.subject_id, Lecture.id != lecture.id)
+        .order_by(Lecture.id.asc())
+        .all()
+    )
+    lines: list[str] = []
+    for item in prior[-6:]:
+        label = item.topic or item.title
+        line = f"• {label}"
+        if item.notes_markdown:
+            snippet = " ".join(item.notes_markdown.split())[:420]
+            line += f" — {snippet}…"
+        lines.append(line)
+    return {
+        "subject_description": (subject.description or "") if subject else "",
+        "course_context": "\n".join(lines),
+        "lecture_number": len(prior) + 1,
+    }
+
+
 def finalize_pipeline_with_fallback(
     lecture_id: int,
     *,
@@ -290,6 +313,7 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
         )
 
         date_str = _lecture_date_str(lecture)
+        ctx = _notes_context(db, lecture)
 
         update_lecture_progress(
             db,
@@ -306,6 +330,9 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
             duration_seconds=lecture.duration_seconds,
             transcript=transcript,
             materials_text=materials_text,
+            subject_description=str(ctx["subject_description"]),
+            course_context=str(ctx["course_context"]),
+            lecture_number=int(ctx["lecture_number"]),
         )
 
         update_lecture_progress(

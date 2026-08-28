@@ -146,6 +146,38 @@ def _source_length(transcript: str, materials_text: str) -> int:
     return len((transcript or "").strip()) + len((materials_text or "").strip())
 
 
+def _context_block(
+    *,
+    subject_description: str = "",
+    course_context: str = "",
+    lecture_number: int | None = None,
+) -> str:
+    parts: list[str] = []
+    if subject_description.strip():
+        parts.append(f"О предмете: {subject_description.strip()}")
+    if lecture_number and lecture_number > 0:
+        parts.append(f"Номер лекции в курсе: {lecture_number}")
+    if course_context.strip():
+        parts.append(
+            "Предыдущие лекции курса (связывай новую тему с ними, не копируй дословно):\n"
+            f"{course_context.strip()}"
+        )
+    return "\n".join(parts)
+
+
+def _slice_source_for_section(source_text: str, idx: int, total: int, window: int = 26000) -> str:
+    source_text = (source_text or "").strip()
+    if len(source_text) <= window or total <= 1:
+        return source_text
+    segment = max(1, len(source_text) // total)
+    center = (idx - 1) * segment + segment // 2
+    start = max(0, center - window // 2)
+    end = min(len(source_text), start + window)
+    if end - start < window and start > 0:
+        start = max(0, end - window)
+    return source_text[start:end]
+
+
 def _notes_look_too_short(notes: str, source_len: int) -> bool:
     if source_len < 300:
         return len(notes.strip()) < 400
@@ -224,11 +256,23 @@ async def _generate_notes_sectioned(
     duration_seconds: int | None,
     source_text: str,
     materials_text: str,
+    subject_description: str = "",
+    course_context: str = "",
+    lecture_number: int | None = None,
 ) -> str:
     """Multi-pass generation: outline → sections → assembly (richer than one-shot)."""
+    context = _context_block(
+        subject_description=subject_description,
+        course_context=course_context,
+        lecture_number=lecture_number,
+    )
+    context_prefix = f"{context}\n\n" if context else ""
+
     outline_raw = await _chat(
         OUTLINE_PROMPT,
-        f"Транскрипт лекции «{title}»:\n\n{source_text[:28000]}",
+        f"""{context_prefix}Транскрипт лекции «{title}» (предмет: {subject_name}):
+
+{source_text[:32000]}""",
         temperature=0.15,
         timeout=settings.ai_notes_timeout_seconds,
     )
@@ -242,16 +286,18 @@ async def _generate_notes_sectioned(
         ]
 
     sections: list[str] = []
+    total = len(topics)
     for idx, topic in enumerate(topics, start=1):
+        section_source = _slice_source_for_section(source_text, idx, total)
         section = await _chat(
             SECTION_PROMPT,
-            f"""Подтема {idx}/{len(topics)}: {topic}
+            f"""{context_prefix}Подтема {idx}/{total}: {topic}
 Предмет: {subject_name} | Лекция: {title}
 
-=== ИСТОЧНИК ===
-{source_text[:24000]}
+=== ИСТОЧНИК (фрагмент по порядку лекции) ===
+{section_source}
 
-=== МАТЕРИАЛЫ ===
+=== МАТЕРИАЛЫ (полностью) ===
 {(materials_text or "").strip() or "(нет)"}
 
 Напиши раздел ### {topic} с терминами, тезисами (минимум 5–8 пунктов) и блоком «Простыми словами».
@@ -261,7 +307,7 @@ async def _generate_notes_sectioned(
         )
         sections.append(section.strip())
 
-    assembly_prompt = f"""Собери финальный ПОЛНЫЙ конспект из готовых разделов.
+    assembly_prompt = f"""{context_prefix}Собери финальный ПОЛНЫЙ конспект из готовых разделов.
 
 Предмет: {subject_name}
 Тема: {title}
@@ -273,6 +319,7 @@ async def _generate_notes_sectioned(
 - Добавь шапку, краткое резюме, связь с практикой, что доработать, 6–8 вопросов.
 - Без мета-текста про методики и алгоритмы — только содержание лекции.
 - Английские термины сохрани.
+- Если есть предыдущие лекции курса — одной строкой укажи, как эта связана с ними.
 
 === РАЗДЕЛЫ ===
 {chr(10).join(sections)}
@@ -512,10 +559,19 @@ async def generate_notes(
     duration_seconds: int | None,
     transcript: str,
     materials_text: str = "",
+    subject_description: str = "",
+    course_context: str = "",
+    lecture_number: int | None = None,
 ) -> tuple[str, str]:
     """Return (markdown_notes, engine_label). Never blindly truncates source material."""
     source_text, chunk_note = await _prepare_transcript_for_notes(transcript)
     materials_block = (materials_text or "").strip() or "(нет)"
+    context = _context_block(
+        subject_description=subject_description,
+        course_context=course_context,
+        lecture_number=lecture_number,
+    )
+    context_block = f"\n=== КОНТЕКСТ КУРСА ===\n{context}\n" if context else ""
 
     user_prompt = f"""Составь МАКСИМАЛЬНО ПОЛНЫЙ учебный конспект по шаблону.
 Структурируй и углуби материал — не урезай. Каждая важная тема — отдельный подраздел.
@@ -525,7 +581,7 @@ async def generate_notes(
 Тема лекции: {title}
 Дата: {lecture_date}
 Длительность: {_format_duration(duration_seconds)}
-
+{context_block}
 === ТРАНСКРИПТ АУДИО (полностью) ===
 {source_text or "(транскрипт недоступен — опирайся на дополнительные материалы)"}
 
@@ -547,6 +603,9 @@ async def generate_notes(
                 duration_seconds=duration_seconds,
                 source_text=source_text or materials_block,
                 materials_text=materials_text,
+                subject_description=subject_description,
+                course_context=course_context,
+                lecture_number=lecture_number,
             )
         else:
             notes = await _chat(
@@ -570,6 +629,9 @@ async def generate_notes(
                     duration_seconds=duration_seconds,
                     source_text=source_text or materials_block,
                     materials_text=materials_text,
+                    subject_description=subject_description,
+                    course_context=course_context,
+                    lecture_number=lecture_number,
                 )
         return notes, "ai"
     except Exception as exc:  # noqa: BLE001
@@ -593,15 +655,25 @@ async def enrich_notes(
     materials_text: str,
     subject_name: str,
     title: str,
+    new_materials_text: str = "",
+    subject_description: str = "",
 ) -> tuple[str, str]:
-    user_prompt = f"""Предмет: {subject_name}
+    new_block = (new_materials_text or materials_text).strip()
+    all_block = (materials_text or "").strip() or new_block
+    context = _context_block(subject_description=subject_description)
+    context_prefix = f"{context}\n\n" if context else ""
+
+    user_prompt = f"""{context_prefix}Предмет: {subject_name}
 Лекция: {title}
 
 === ТЕКУЩИЙ КОНСПЕКТ (сохрани и расширь, не сокращай) ===
 {existing_notes}
 
-=== НОВЫЕ МАТЕРИАЛЫ (полностью) ===
-{materials_text}
+=== ВСЕ МАТЕРИАЛЫ ЛЕКЦИИ (контекст) ===
+{all_block}
+
+=== НОВЫЕ МАТЕРИАЛЫ (добавить в конспект) ===
+{new_block}
 
 Дополни конспект новыми тезисами из материалов. Не удаляй существующие блоки.
 Верни обновлённый конспект целиком + строку NOTICE в конце.

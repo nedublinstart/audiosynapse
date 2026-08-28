@@ -1,7 +1,8 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState, type CSSProperties } from "react";
 import { ArrowLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
@@ -13,12 +14,14 @@ import { SkeletonList } from "@/components/SkeletonList";
 import { StatePlaceholder } from "@/components/StatePlaceholder";
 import { api, type Lecture, type Subject } from "@/lib/api";
 import { errorMessage, placeholderForError } from "@/lib/placeholders";
+import { isAutoLectureTitle, suggestLectureTitle } from "@/lib/lectureTitles";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 
 function SubjectInner() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const subjectId = Number(params.id);
   const invalidId = !Number.isFinite(subjectId) || subjectId <= 0;
   const [subject, setSubject] = useState<Subject | null>(null);
@@ -26,6 +29,7 @@ function SubjectInner() {
   const [title, setTitle] = useState("");
   const [topic, setTopic] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [titleTouched, setTitleTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState<unknown>(null);
@@ -45,6 +49,7 @@ function SubjectInner() {
     setLectures(l);
     setLoadError(null);
     setLoaded(true);
+    return l;
   }, [invalidId, subjectId]);
 
   useEffect(() => {
@@ -54,6 +59,24 @@ function SubjectInner() {
       setLoaded(true);
     });
   }, [load]);
+
+  useEffect(() => {
+    if (!loaded || invalidId) return;
+    if (searchParams.get("new") === "1") {
+      setShowForm(true);
+      setTitleTouched(false);
+      setTitle(suggestLectureTitle(lectures.length));
+      setTopic("");
+      router.replace(`/app/subjects/${subjectId}`, { scroll: false });
+    }
+  }, [loaded, invalidId, lectures.length, router, searchParams, subjectId]);
+
+  function openLectureForm(count = lectures.length) {
+    setShowForm(true);
+    setTitleTouched(false);
+    setTitle(suggestLectureTitle(count));
+    setTopic("");
+  }
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -89,24 +112,38 @@ function SubjectInner() {
     }
   }
 
-  if (loaded && loadError && !subject) {
+  if (!loaded) {
+    return (
+      <AppShell title="Предмет">
+        <SkeletonList rows={4} />
+      </AppShell>
+    );
+  }
+
+  if (loadError && !subject) {
     const variant = invalidId ? "not-found" : placeholderForError(loadError);
     return (
       <AppShell title="Предмет">
         <ErrorPanel
           err={loadError}
           error={invalidId ? "Предмет не найден" : error}
-          onRetry={invalidId ? undefined : () => {
-            setLoadError(null);
-            setError("");
-            setLoaded(false);
-            void load();
-          }}
+          onRetry={
+            invalidId
+              ? undefined
+              : () => {
+                  setLoadError(null);
+                  setError("");
+                  setLoaded(false);
+                  void load();
+                }
+          }
           compact={variant === "not-found"}
         />
       </AppShell>
     );
   }
+
+  const autoTitle = isAutoLectureTitle(title, lectures.length) && !titleTouched;
 
   return (
     <AppShell title={subject ? subject.name : "Предмет"}>
@@ -137,7 +174,10 @@ function SubjectInner() {
               <button className="btn-ghost !min-h-10 !px-3" onClick={() => void onDeleteSubject()} aria-label="Удалить">
                 <Trash2 size={16} />
               </button>
-              <button className="btn-primary flex-1 sm:!w-auto" onClick={() => setShowForm((v) => !v)}>
+              <button
+                className="btn-primary flex-1 sm:!w-auto"
+                onClick={() => (showForm ? setShowForm(false) : openLectureForm())}
+              >
                 <Plus size={16} /> {showForm ? "Скрыть" : "Лекция"}
               </button>
             </div>
@@ -147,17 +187,25 @@ function SubjectInner() {
 
       {showForm ? (
         <FadeIn>
-          <form onSubmit={onCreate} className="panel mb-6 grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
+          <form onSubmit={onCreate} className="panel-reveal panel mb-6 grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
             <div>
               <label className="label">Название</label>
               <input
-                className="input"
+                className={`input ${autoTitle ? "input-suggested" : ""}`}
                 required
-                placeholder="Лекция 3"
+                placeholder={suggestLectureTitle(lectures.length)}
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  setTitleTouched(true);
+                  setTitle(e.target.value);
+                }}
                 autoFocus
               />
+              {autoTitle ? (
+                <p className="mt-1.5 text-xs" style={{ color: "var(--fg-muted)" }}>
+                  Подставлено автоматически — можно изменить
+                </p>
+              ) : null}
             </div>
             <div>
               <label className="label">Тема</label>
@@ -169,7 +217,7 @@ function SubjectInner() {
               />
             </div>
             <p className="text-xs sm:col-span-2" style={{ color: "var(--fg-muted)" }}>
-              Дата подставится сама (сегодня). Время вводить не нужно.
+              Дата подставится сама (сегодня). После создания сразу откроется загрузка аудио.
             </p>
             <div className="sm:col-span-2">
               <button className="btn-primary sm:!w-auto" disabled={busy}>
@@ -193,49 +241,45 @@ function SubjectInner() {
         />
       ) : null}
 
-      {!loaded ? (
-        <SkeletonList rows={4} />
-      ) : (
-        <div className="space-y-2.5">
-          {lectures.map((lecture) => (
-            <FadeIn key={lecture.id}>
-              <Link
-                href={`/app/lectures/${lecture.id}`}
-                className="subject-card panel panel-interactive flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
-                style={{ "--subject-accent": subject?.color || "var(--accent)" } as CSSProperties}
-              >
-                <div className="relative min-w-0">
-                  <div className="font-medium tracking-tight">{lecture.title}</div>
-                  <div className="mt-0.5 truncate text-sm" style={{ color: "var(--fg-muted)" }}>
-                    {lecture.topic || "Тема не указана"}
-                    {lecture.lecture_date
-                      ? ` · ${format(new Date(lecture.lecture_date), "d MMMM yyyy", { locale: ru })}`
-                      : ""}
-                  </div>
+      <div className="space-y-2.5">
+        {lectures.map((lecture) => (
+          <FadeIn key={lecture.id}>
+            <Link
+              href={`/app/lectures/${lecture.id}`}
+              className="subject-card panel panel-interactive flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+              style={{ "--subject-accent": subject?.color || "var(--accent)" } as CSSProperties}
+            >
+              <div className="relative min-w-0">
+                <div className="font-medium tracking-tight">{lecture.title}</div>
+                <div className="mt-0.5 truncate text-sm" style={{ color: "var(--fg-muted)" }}>
+                  {lecture.topic || "Тема не указана"}
+                  {lecture.lecture_date
+                    ? ` · ${format(new Date(lecture.lecture_date), "d MMMM yyyy", { locale: ru })}`
+                    : ""}
                 </div>
-                <div className="flex items-center gap-2 self-start sm:self-auto">
-                  <StatusBadge status={lecture.status} />
-                  <ChevronRight size={16} className="subject-card-arrow" style={{ color: "var(--accent)" }} />
-                </div>
-              </Link>
-            </FadeIn>
-          ))}
-          {!lectures.length ? (
-            <FadeIn>
-              <StatePlaceholder
-                variant="empty-lectures"
-                actions={[
-                  {
-                    label: "Новая лекция",
-                    onClick: () => setShowForm(true),
-                    primary: true,
-                  },
-                ]}
-              />
-            </FadeIn>
-          ) : null}
-        </div>
-      )}
+              </div>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <StatusBadge status={lecture.status} />
+                <ChevronRight size={16} className="subject-card-arrow" style={{ color: "var(--accent)" }} />
+              </div>
+            </Link>
+          </FadeIn>
+        ))}
+        {!lectures.length ? (
+          <FadeIn>
+            <StatePlaceholder
+              variant="empty-lectures"
+              actions={[
+                {
+                  label: "Новая лекция",
+                  onClick: () => openLectureForm(0),
+                  primary: true,
+                },
+              ]}
+            />
+          </FadeIn>
+        ) : null}
+      </div>
     </AppShell>
   );
 }
@@ -243,7 +287,15 @@ function SubjectInner() {
 export default function SubjectPage() {
   return (
     <RequireAuth>
-      <SubjectInner />
+      <Suspense
+        fallback={
+          <AppShell title="Предмет">
+            <SkeletonList rows={4} />
+          </AppShell>
+        }
+      >
+        <SubjectInner />
+      </Suspense>
     </RequireAuth>
   );
 }

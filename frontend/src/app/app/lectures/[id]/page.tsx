@@ -32,6 +32,7 @@ import { SkeletonLecturePage } from "@/components/SkeletonList";
 import { StatePlaceholder } from "@/components/StatePlaceholder";
 import { TextReveal } from "@/components/TextReveal";
 import { api, isNetworkError, type ChatMessage, type Lecture } from "@/lib/api";
+import { MATERIAL_ACCEPT, MATERIAL_HINT } from "@/lib/fileFormats";
 import { placeholderForError } from "@/lib/placeholders";
 
 function LectureInner() {
@@ -327,7 +328,7 @@ function LectureInner() {
               <input
                 ref={materialRef}
                 type="file"
-                accept=".pdf,.pptx,.docx,.png,.jpg,.jpeg,.webp,.txt,.md"
+                accept={MATERIAL_ACCEPT}
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
@@ -339,7 +340,7 @@ function LectureInner() {
                 disabled={busy || lecture.status === "processing"}
                 onClick={() => materialRef.current?.click()}
               >
-                <FileUp size={16} /> Добавить материал (PDF, слайды)
+                <FileUp size={16} /> Материалы ({MATERIAL_HINT})
               </button>
               {lecture.audio_filename && lecture.status !== "processing" ? (
                 <button
