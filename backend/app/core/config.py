@@ -29,20 +29,25 @@ class Settings(BaseSettings):
     ai_probe_workers: int = 6
     ai_max_attempts: int = 8
     ai_cache_seconds: float = 3600.0
-    ai_notes_timeout_seconds: float = 150.0
-    transcribe_timeout_seconds: float = 600.0
+    ai_notes_timeout_seconds: float = 90.0
+    transcribe_timeout_seconds: float = 300.0
     # Hard cap for one background lecture job (transcribe + notes).
-    pipeline_max_seconds: float = 2400.0
+    pipeline_max_seconds: float = 900.0
     # Lectures stuck in processing longer than this are recovered on read / startup.
-    processing_stale_seconds: float = 2700.0
+    processing_stale_seconds: float = 600.0
+    # Max seconds for AI notes step before delivering fast stub notes.
+    notes_pipeline_max_seconds: float = 180.0
 
     # Notes quality: single-pass below this size; longer lectures use chunked extraction.
     notes_single_pass_max_chars: int = 48_000
     notes_chunk_size: int = 14_000
+    # Multi-section notes only for very long sources (each section = 1 LLM call).
+    notes_sectioned_min_chars: int = 24_000
+    notes_max_sections: int = 4
 
-    # Local speech-to-text (faster-whisper). "medium" — качество для русских лекций.
-    whisper_model: str = "medium"
-    whisper_beam_size: int = 5
+    # Local speech-to-text (faster-whisper). "small" — баланс скорость/качество на CPU.
+    whisper_model: str = "small"
+    whisper_beam_size: int = 1
     # Primary language: Russian. English terms still come through correctly.
     # Empty = auto-detect; "ru" preferred for typical university lectures.
     whisper_language: str = "ru"

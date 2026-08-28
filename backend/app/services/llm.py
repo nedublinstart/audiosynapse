@@ -623,8 +623,8 @@ def _transcribe_local(audio_path: Path, on_progress=None) -> tuple[str, int | No
         detected,
     )
 
-    # Pass 2: if coverage weak, retry auto-detect (helps EN-heavy lectures).
-    if coverage < 0.82 or len(text) < 80:
+    # Pass 2: only if the first pass clearly missed speech (saves ~1× realtime on CPU).
+    if coverage < 0.65 or len(text) < 40:
         if on_progress:
             try:
                 on_progress(0.05, "Дополнительный проход: автоопределение языка…")
