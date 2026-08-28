@@ -128,8 +128,8 @@ const COPY: Record<PlaceholderVariant, Copy> = {
     icon: UploadCloud,
   },
   "offline-chat": {
-    title: "Чат временно недоступен",
-    message: "Нет связи с сервером. Конспект на вкладке слева уже сохранён — вернитесь, когда интернет появится.",
+    title: "История чата не загрузилась",
+    message: "Проверьте, что сервер запущен (npm run dev), и нажмите «Повторить».",
     icon: WifiOff,
   },
   "auth-failed": {
