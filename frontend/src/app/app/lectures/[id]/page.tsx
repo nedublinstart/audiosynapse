@@ -34,6 +34,11 @@ import { TextReveal } from "@/components/TextReveal";
 import { api, isNetworkError, type ChatMessage, type Lecture } from "@/lib/api";
 import { MATERIAL_ACCEPT, MATERIAL_HINT } from "@/lib/fileFormats";
 import { chatSendErrorMessage, placeholderForError } from "@/lib/placeholders";
+import {
+  canSendChatMessage,
+  CHAT_MAX_MESSAGE_CHARS,
+  lectureHasChatContext,
+} from "@/lib/chat";
 
 function LectureInner() {
   const params = useParams();
@@ -57,6 +62,11 @@ function LectureInner() {
   const [loadFailed, setLoadFailed] = useState<unknown>(null);
   const [chatLoadFailed, setChatLoadFailed] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatSendingRef = useRef(false);
+
+  const chatReady = lecture
+    ? lectureHasChatContext(lecture)
+    : false;
 
   const load = useCallback(async () => {
     if (invalidId) {
@@ -212,8 +222,16 @@ function LectureInner() {
 
   async function onChat(e: FormEvent) {
     e.preventDefault();
-    if (!message.trim() || busy) return;
+    if (!message.trim() || busy || chatSendingRef.current || !lecture) return;
+
     const text = message.trim();
+    const allowed = canSendChatMessage(lecture, text);
+    if (!allowed.ok) {
+      setError(allowed.reason);
+      return;
+    }
+
+    chatSendingRef.current = true;
     setMessage("");
     setError("");
     setLastError(null);
@@ -237,6 +255,7 @@ function LectureInner() {
       setError(chatSendErrorMessage(err));
     } finally {
       setBusy(false);
+      chatSendingRef.current = false;
     }
   }
 
@@ -620,18 +639,43 @@ function LectureInner() {
             </div>
             <form
               onSubmit={onChat}
-              className="flex gap-2 border-t p-3 safe-pb"
+              className="flex flex-col gap-2 border-t p-3 safe-pb"
               style={{ borderColor: "var(--border)" }}
             >
-              <input
-                className="input"
-                placeholder={examMode ? "Вопросы или ответ…" : "Вопрос по лекции…"}
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-              />
-              <button className="btn-primary !min-h-11 !w-11 shrink-0 !px-0" disabled={busy} aria-label="Отправить">
-                <Send size={16} />
-              </button>
+              {!chatReady && lecture.status !== "processing" ? (
+                <p className="text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+                  Загрузите аудио или материалы — тогда чат сможет отвечать по лекции. «Привет» можно
+                  отправить и сейчас.
+                </p>
+              ) : null}
+              <div className="flex gap-2">
+                <input
+                  className="input"
+                  placeholder={
+                    lecture.status === "processing"
+                      ? "Дождитесь конспекта…"
+                      : examMode
+                        ? "Вопросы или ответ…"
+                        : "Вопрос по лекции…"
+                  }
+                  value={message}
+                  maxLength={CHAT_MAX_MESSAGE_CHARS}
+                  disabled={busy || lecture.status === "processing"}
+                  onChange={(e) => setMessage(e.target.value)}
+                />
+                <button
+                  className="btn-primary !min-h-11 !w-11 shrink-0 !px-0"
+                  disabled={busy || lecture.status === "processing" || !message.trim()}
+                  aria-label="Отправить"
+                >
+                  <Send size={16} />
+                </button>
+              </div>
+              {message.length > CHAT_MAX_MESSAGE_CHARS - 200 ? (
+                <p className="text-right text-xs" style={{ color: "var(--fg-muted)" }}>
+                  {message.length}/{CHAT_MAX_MESSAGE_CHARS}
+                </p>
+              ) : null}
             </form>
           </div>
         </FadeIn>

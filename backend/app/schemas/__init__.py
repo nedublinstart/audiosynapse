@@ -163,7 +163,7 @@ class LectureDetailOut(LectureOut):
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1)
+    message: str = Field(min_length=1, max_length=2000)
     exam_mode: bool = False
 
 
