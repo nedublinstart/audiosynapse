@@ -1,0 +1,256 @@
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy.orm import Session, joinedload
+
+from app.api.deps import get_current_user
+from app.core.database import get_db
+from app.models import ScheduleSlot, Semester, Subject, User
+from app.schemas import (
+    ScheduleSlotCreate,
+    ScheduleSlotOut,
+    SemesterCreate,
+    SemesterOut,
+    SubjectCreate,
+    SubjectImportConfirmIn,
+    SubjectImportItem,
+    SubjectImportPreviewIn,
+    SubjectImportPreviewOut,
+    SubjectOut,
+    SubjectUpdate,
+)
+from app.services import ai
+from app.services.ai import SUBJECT_IMPORT_COLORS
+
+router = APIRouter(tags=["academics"])
+
+
+@router.post("/semesters", response_model=SemesterOut)
+def create_semester(
+    payload: SemesterCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> SemesterOut:
+    semester = Semester(name=payload.name.strip(), owner_id=user.id)
+    db.add(semester)
+    db.commit()
+    db.refresh(semester)
+    return SemesterOut.model_validate(semester)
+
+
+@router.get("/semesters", response_model=list[SemesterOut])
+def list_semesters(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[SemesterOut]:
+    rows = db.query(Semester).filter(Semester.owner_id == user.id).order_by(Semester.created_at.desc()).all()
+    return [SemesterOut.model_validate(r) for r in rows]
+
+
+def _subject_out(subject: Subject) -> SubjectOut:
+    data = SubjectOut.model_validate(subject)
+    data.lecture_count = len(subject.lectures)
+    return data
+
+
+def _next_color(index: int) -> str:
+    return SUBJECT_IMPORT_COLORS[index % len(SUBJECT_IMPORT_COLORS)]
+
+
+@router.post("/subjects/import/preview", response_model=SubjectImportPreviewOut)
+async def preview_subject_import(
+    payload: SubjectImportPreviewIn,
+    user: User = Depends(get_current_user),
+) -> SubjectImportPreviewOut:
+    """AI (or heuristic) master: paste timetable / list → subject names, no schedule."""
+    _ = user
+    try:
+        items, engine = await ai.parse_subjects_from_text(payload.text)
+    except Exception as exc:  # noqa: BLE001
+        import logging
+
+        logging.getLogger("synapse.subjects").warning("import preview failed: %s", exc)
+        items = ai.heuristic_subjects_from_text(payload.text)
+        engine = "heuristic"
+    preview = [
+        SubjectImportItem(
+            name=item["name"],
+            description=item.get("description"),
+            color=_next_color(i),
+            selected=True,
+        )
+        for i, item in enumerate(items)
+    ]
+    return SubjectImportPreviewOut(engine=engine, items=preview)
+
+
+@router.post("/subjects/import", response_model=list[SubjectOut])
+def confirm_subject_import(
+    payload: SubjectImportConfirmIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[SubjectOut]:
+    """Bulk-create selected subjects without schedule slots."""
+    created_ids: list[int] = []
+    color_i = 0
+    for item in payload.items:
+        if not item.selected:
+            continue
+        name = item.name.strip()
+        if not name:
+            continue
+        subject = Subject(
+            name=name,
+            description=item.description,
+            color=item.color or _next_color(color_i),
+            owner_id=user.id,
+            semester_id=None,
+        )
+        color_i += 1
+        db.add(subject)
+        db.flush()
+        created_ids.append(subject.id)
+    if not created_ids:
+        raise HTTPException(status_code=400, detail="Не выбрано ни одного предмета")
+    db.commit()
+    rows = (
+        db.query(Subject)
+        .options(joinedload(Subject.schedule_slots), joinedload(Subject.lectures))
+        .filter(Subject.id.in_(created_ids), Subject.owner_id == user.id)
+        .order_by(Subject.id.asc())
+        .all()
+    )
+    return [_subject_out(r) for r in rows]
+
+
+@router.post("/subjects", response_model=SubjectOut)
+def create_subject(
+    payload: SubjectCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> SubjectOut:
+    if payload.semester_id:
+        semester = db.get(Semester, payload.semester_id)
+        if not semester or semester.owner_id != user.id:
+            raise HTTPException(status_code=404, detail="Семестр не найден")
+    subject = Subject(
+        name=payload.name.strip(),
+        description=payload.description,
+        color=payload.color,
+        owner_id=user.id,
+        semester_id=payload.semester_id,
+    )
+    db.add(subject)
+    db.flush()
+    # Schedule is optional — floating timetables by design.
+    for slot in payload.schedule:
+        db.add(
+            ScheduleSlot(
+                subject_id=subject.id,
+                weekday=slot.weekday,
+                start_time=slot.start_time,
+                end_time=slot.end_time,
+                location=slot.location,
+            )
+        )
+    db.commit()
+    subject = (
+        db.query(Subject)
+        .options(joinedload(Subject.schedule_slots), joinedload(Subject.lectures))
+        .filter(Subject.id == subject.id)
+        .one()
+    )
+    return _subject_out(subject)
+
+
+@router.get("/subjects", response_model=list[SubjectOut])
+def list_subjects(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[SubjectOut]:
+    rows = (
+        db.query(Subject)
+        .options(joinedload(Subject.schedule_slots), joinedload(Subject.lectures))
+        .filter(Subject.owner_id == user.id)
+        .order_by(Subject.created_at.desc())
+        .all()
+    )
+    return [_subject_out(r) for r in rows]
+
+
+@router.get("/subjects/{subject_id}", response_model=SubjectOut)
+def get_subject(
+    subject_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> SubjectOut:
+    subject = (
+        db.query(Subject)
+        .options(joinedload(Subject.schedule_slots), joinedload(Subject.lectures))
+        .filter(Subject.id == subject_id, Subject.owner_id == user.id)
+        .first()
+    )
+    if not subject:
+        raise HTTPException(status_code=404, detail="Предмет не найден")
+    return _subject_out(subject)
+
+
+@router.patch("/subjects/{subject_id}", response_model=SubjectOut)
+def update_subject(
+    subject_id: int,
+    payload: SubjectUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> SubjectOut:
+    subject = db.query(Subject).filter(Subject.id == subject_id, Subject.owner_id == user.id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Предмет не найден")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(subject, field, value)
+    db.commit()
+    subject = (
+        db.query(Subject)
+        .options(joinedload(Subject.schedule_slots), joinedload(Subject.lectures))
+        .filter(Subject.id == subject_id)
+        .one()
+    )
+    return _subject_out(subject)
+
+
+@router.delete(
+    "/subjects/{subject_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def delete_subject(
+    subject_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    subject = db.query(Subject).filter(Subject.id == subject_id, Subject.owner_id == user.id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Предмет не найден")
+    db.delete(subject)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/subjects/{subject_id}/schedule", response_model=ScheduleSlotOut)
+def add_schedule_slot(
+    subject_id: int,
+    payload: ScheduleSlotCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ScheduleSlotOut:
+    subject = db.query(Subject).filter(Subject.id == subject_id, Subject.owner_id == user.id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Предмет не найден")
+    slot = ScheduleSlot(
+        subject_id=subject.id,
+        weekday=payload.weekday,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+        location=payload.location,
+    )
+    db.add(slot)
+    db.commit()
+    db.refresh(slot)
+    return ScheduleSlotOut.model_validate(slot)

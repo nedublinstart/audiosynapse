@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+backend/.venv/
+backend/data/
+backend/uploads/
+backend/.env
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/.env*.local
+
+# Launcher runtime
+.run/
+node_modules/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Misc
+hello.md
