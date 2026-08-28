@@ -156,7 +156,12 @@ function LectureInner() {
       lecture.notes_markdown &&
       prevStatusRef.current === "processing"
     ) {
-      setSuccess("Конспект готов! Можно читать, экспортировать или спросить в чате.");
+      const short = lecture.notes_markdown.trim().length < 500;
+      setSuccess(
+        short
+          ? "Конспект короткий — нажмите «Обработать снова» или проверьте транскрипт ниже."
+          : "Конспект готов! Можно читать, экспортировать или спросить в чате.",
+      );
     }
     prevStatusRef.current = lecture?.status ?? null;
   }, [lecture?.status, lecture?.notes_markdown]);
@@ -538,7 +543,21 @@ function LectureInner() {
                 }
               />
             ) : lecture.notes_markdown ? (
-              <MarkdownNotes content={lecture.notes_markdown} />
+              <>
+                {lecture.notes_markdown.trim().length < 500 ? (
+                  <div
+                    className="mb-4 rounded-[10px] px-4 py-3 text-sm"
+                    style={{
+                      background: "color-mix(in srgb, var(--warn) 12%, transparent)",
+                      color: "var(--warn)",
+                    }}
+                  >
+                    Конспект получился слишком коротким — откройте транскрипт ниже или нажмите
+                    «Обработать снова».
+                  </div>
+                ) : null}
+                <MarkdownNotes content={lecture.notes_markdown} />
+              </>
             ) : (
               <div className="space-y-6">
                 <StatePlaceholder inline compact variant="empty-notes" />
@@ -579,9 +598,9 @@ function LectureInner() {
                 </ul>
               </div>
             ) : lecture.status !== "processing" && lecture.notes_markdown ? (
-              <div className="mt-8 border-t pt-6" style={{ borderColor: "var(--border)" }}>
-                <StatePlaceholder inline compact variant="empty-materials" />
-              </div>
+              <p className="mt-6 text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+                Можно добавить PDF или слайды — конспект обогатится схемами из презентации.
+              </p>
             ) : null}
           </article>
         </FadeIn>

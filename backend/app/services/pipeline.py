@@ -406,10 +406,15 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
         lecture.notes_markdown = notes
         if engine == "local":
             notices.append(
-                "Конспект собран быстро по транскрипту — нажмите «Обработать снова» для полной AI-версии."
+                "Конспект собран по транскрипту в упрощённом режиме — "
+                "нажмите «Обработать снова» для полной AI-версии."
             )
-        elif engine == "ai":
+        elif engine == "ai" and len(notes.strip()) >= 800:
             notices.append("Конспект собран с полным разбором материала.")
+        elif engine == "ai":
+            notices.append(
+                "Конспект короткий — нажмите «Обработать снова» или добавьте PDF со слайдами."
+            )
 
         lecture.enrichment_notice = " ".join(notices) or None
         lecture.status = LectureStatus.ready

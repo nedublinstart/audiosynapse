@@ -186,6 +186,59 @@ def _notes_look_too_short(notes: str, source_len: int) -> bool:
     return len(notes.strip()) < target
 
 
+def _sanitize_notes_markdown(notes: str) -> str:
+    """Escape currency-like $ so markdown math renderers do not swallow the rest."""
+    # $100 / $1,500 — not LaTeX
+    notes = re.sub(r"\$(\d)", r"\\$\1", notes)
+    return notes
+
+
+async def _ensure_notes_quality(
+    notes: str,
+    engine: str,
+    *,
+    transcript: str,
+    materials_text: str,
+    subject_name: str,
+    title: str,
+    lecture_date: str,
+    duration_seconds: int | None,
+) -> tuple[str, str]:
+    """Expand short AI output or fall back to local Cornell notes from transcript."""
+    source_len = _source_length(transcript, materials_text)
+    notes = _sanitize_notes_markdown(notes.strip())
+
+    if engine == "ai" and _notes_look_too_short(notes, source_len):
+        notes = await _expand_notes_if_needed(
+            notes,
+            transcript=transcript,
+            materials_text=materials_text,
+            subject_name=subject_name,
+            title=title,
+        )
+        notes = _sanitize_notes_markdown(notes.strip())
+
+    if _notes_look_too_short(notes, source_len) and (transcript.strip() or materials_text.strip()):
+        logger.warning(
+            "notes quality gate: %s chars for %s source — local fallback",
+            len(notes),
+            source_len,
+        )
+        return (
+            build_demo_notes(
+                subject_name=subject_name,
+                title=title,
+                lecture_date=lecture_date,
+                duration_seconds=duration_seconds,
+                transcript=transcript,
+                materials_text=materials_text,
+            ),
+            "local",
+        )
+
+    return notes, engine
+
+
 async def _expand_notes_if_needed(
     notes: str,
     *,
@@ -609,7 +662,17 @@ async def generate_notes(
                 course_context=course_context,
                 lecture_number=lecture_number,
             )
-            return notes, "ai"
+            notes, engine = await _ensure_notes_quality(
+                notes,
+                "ai",
+                transcript=transcript,
+                materials_text=materials_text,
+                subject_name=subject_name,
+                title=title,
+                lecture_date=lecture_date,
+                duration_seconds=duration_seconds,
+            )
+            return notes, engine
 
         report(68, "Собираем конспект…")
         notes = await _chat(
@@ -618,7 +681,17 @@ async def generate_notes(
             temperature=0.22,
             timeout=settings.ai_notes_timeout_seconds,
         )
-        return notes, "ai"
+        notes, engine = await _ensure_notes_quality(
+            notes,
+            "ai",
+            transcript=transcript,
+            materials_text=materials_text,
+            subject_name=subject_name,
+            title=title,
+            lecture_date=lecture_date,
+            duration_seconds=duration_seconds,
+        )
+        return notes, engine
 
     try:
         return await asyncio.wait_for(_run(), timeout=settings.notes_pipeline_max_seconds)
@@ -628,17 +701,15 @@ async def generate_notes(
         logger.error("generate_notes failed: %s", exc)
 
     report(88, "Быстрый конспект по транскрипту…")
-    return (
-        build_demo_notes(
-            subject_name=subject_name,
-            title=title,
-            lecture_date=lecture_date,
-            duration_seconds=duration_seconds,
-            transcript=transcript,
-            materials_text=materials_text,
-        ),
-        "local",
+    fallback = build_demo_notes(
+        subject_name=subject_name,
+        title=title,
+        lecture_date=lecture_date,
+        duration_seconds=duration_seconds,
+        transcript=transcript,
+        materials_text=materials_text,
     )
+    return _sanitize_notes_markdown(fallback), "local"
 
 
 async def enrich_notes(

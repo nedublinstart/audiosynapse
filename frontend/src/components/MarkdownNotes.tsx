@@ -9,6 +9,9 @@ import { Mic, Presentation } from "lucide-react";
 import type { Components } from "react-markdown";
 import { TextReveal } from "@/components/TextReveal";
 
+/** Only $$...$$ is treated as math — avoids breaking notes with $100, $P/E, etc. */
+const mathPlugin = remarkMath as typeof remarkMath;
+
 function decorateSources(text: string): React.ReactNode[] {
   const parts = text.split(/(\[(?:Аудио|Слайд|Конспект)[^\]]*\])/g);
   return parts.map((part, i) => {
@@ -60,7 +63,7 @@ const components: Components = {
 export function MarkdownNotes({ content, animate = true }: { content: string; animate?: boolean }) {
   const body = (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
+      remarkPlugins={[remarkGfm, [mathPlugin, { singleDollarTextMath: false }]]}
       rehypePlugins={[rehypeKatex]}
       components={components}
     >
