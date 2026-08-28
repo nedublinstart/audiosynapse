@@ -1,8 +1,8 @@
 "use client";
 
-import { Layers, Plus, Sparkles, Wand2 } from "lucide-react";
+import { CalendarDays, Layers, Plus, Sparkles, Wand2 } from "lucide-react";
 
-type Mode = "none" | "create" | "import";
+type Mode = "none" | "create" | "import" | "schedule";
 
 type Props = {
   mode: Mode;
@@ -10,13 +10,20 @@ type Props = {
   compact?: boolean;
 };
 
-/** Guided entry: one subject or AI import — quiet motion, clear direction. */
 export function SubjectAddHub({ mode, onModeChange, compact }: Props) {
   if (mode !== "none") return null;
 
   if (compact) {
     return (
       <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn-outline !min-h-10 shrink-0 !px-3 sm:!w-auto"
+          onClick={() => onModeChange("schedule")}
+        >
+          <CalendarDays size={16} />
+          <span className="hidden sm:inline">Расписание</span>
+        </button>
         <button
           type="button"
           className="btn-outline !min-h-10 shrink-0 !px-3 sm:!w-auto"
@@ -42,13 +49,13 @@ export function SubjectAddHub({ mode, onModeChange, compact }: Props) {
       <div className="border-b px-4 py-4 sm:px-5 sm:py-5" style={{ borderColor: "var(--border)" }}>
         <div className="mb-1 flex items-center gap-2">
           <Layers size={16} style={{ color: "var(--accent)" }} />
-          <p className="text-sm font-medium">Добавить предмет</p>
+          <p className="text-sm font-medium">Добавить предметы</p>
         </div>
         <p className="text-xs leading-relaxed sm:text-sm" style={{ color: "var(--fg-muted)" }}>
-          Один клик — и можно загружать лекции. Расписание и время не нужны.
+          Один предмет, список или расписание на весь семестр — как в вашем вузе.
         </p>
       </div>
-      <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
+      <div className="grid gap-3 p-4 sm:grid-cols-3 sm:p-5">
         <button
           type="button"
           className="subject-add-card pressable panel panel-interactive flex flex-col items-start gap-3 p-4 text-left sm:p-5"
@@ -63,7 +70,25 @@ export function SubjectAddHub({ mode, onModeChange, compact }: Props) {
           <div>
             <p className="font-medium tracking-tight">Один предмет</p>
             <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-              Название, цвет — сразу к лекциям и конспектам.
+              Быстро — название и сразу к лекциям.
+            </p>
+          </div>
+        </button>
+        <button
+          type="button"
+          className="subject-add-card pressable panel panel-interactive flex flex-col items-start gap-3 p-4 text-left sm:p-5"
+          onClick={() => onModeChange("schedule")}
+        >
+          <span
+            className="flex h-10 w-10 items-center justify-center rounded-[12px]"
+            style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+          >
+            <CalendarDays size={20} />
+          </span>
+          <div>
+            <p className="font-medium tracking-tight">Расписание на семестр</p>
+            <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
+              Пн, Вт… и время пар — вручную или импортом.
             </p>
           </div>
         </button>
@@ -79,9 +104,9 @@ export function SubjectAddHub({ mode, onModeChange, compact }: Props) {
             <Sparkles size={20} />
           </span>
           <div>
-            <p className="font-medium tracking-tight">Импорт списком</p>
+            <p className="font-medium tracking-tight">Список предметов</p>
             <p className="mt-1 text-sm leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-              Вставьте расписание или список — ИИ уберёт время и слоты.
+              Вставьте названия — без расписания.
             </p>
           </div>
         </button>

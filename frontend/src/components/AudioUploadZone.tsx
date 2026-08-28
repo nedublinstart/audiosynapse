@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { FileAudio, Loader2, Upload, X } from "lucide-react";
-import { AUDIO_ACCEPT, AUDIO_HINT } from "@/lib/fileFormats";
+import { FileAudio, Film, Loader2, Upload, X } from "lucide-react";
+import { AUDIO_ACCEPT, MEDIA_HINT } from "@/lib/fileFormats";
+import { isVideoFilename } from "@/lib/schedule";
 
 const ACCEPT = AUDIO_ACCEPT;
 const MAX_MB = 500;
@@ -60,12 +61,24 @@ export function AudioUploadZone({
       setLocalError("");
       setPreview({ name: file.name, size: file.size });
       const url = URL.createObjectURL(file);
-      const audio = new Audio(url);
-      audio.addEventListener("loadedmetadata", () => {
-        setPreview({ name: file.name, size: file.size, duration: audio.duration });
-        URL.revokeObjectURL(url);
-      });
-      audio.addEventListener("error", () => URL.revokeObjectURL(url));
+      const isVideo = isVideoFilename(file.name) || file.type.startsWith("video/");
+      if (isVideo) {
+        const video = document.createElement("video");
+        video.preload = "metadata";
+        video.onloadedmetadata = () => {
+          setPreview({ name: file.name, size: file.size, duration: video.duration });
+          URL.revokeObjectURL(url);
+        };
+        video.onerror = () => URL.revokeObjectURL(url);
+        video.src = url;
+      } else {
+        const audio = new Audio(url);
+        audio.addEventListener("loadedmetadata", () => {
+          setPreview({ name: file.name, size: file.size, duration: audio.duration });
+          URL.revokeObjectURL(url);
+        });
+        audio.addEventListener("error", () => URL.revokeObjectURL(url));
+      }
       onFile(file);
     },
     [busy, disabled, onError, onFile],
@@ -167,14 +180,17 @@ export function AudioUploadZone({
               {currentFilename ? <FileAudio size={22} /> : <Upload size={22} />}
             </div>
             <p className="text-sm font-medium" style={{ color: "var(--fg)" }}>
-              {currentFilename ? "Перетащите новый файл или нажмите" : "Перетащите аудио лекции сюда"}
+              {currentFilename
+                ? "Перетащите новый файл или нажмите"
+                : "Перетащите аудио или видео лекции сюда"}
             </p>
             <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-              {AUDIO_HINT}
+              {MEDIA_HINT}
             </p>
             {currentFilename ? (
               <p className="mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs" style={{ background: "var(--bg-soft)", color: "var(--fg-muted)" }}>
-                <FileAudio size={12} /> {currentFilename}
+                {isVideoFilename(currentFilename) ? <Film size={12} /> : <FileAudio size={12} />}
+                {currentFilename}
               </p>
             ) : null}
           </>

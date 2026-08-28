@@ -63,12 +63,18 @@ async def preview_subject_import(
     """AI (or heuristic) master: paste timetable / list → subject names, no schedule."""
     _ = user
     try:
-        items, engine = await ai.parse_subjects_from_text(payload.text)
+        items, engine = await ai.parse_subjects_from_text(
+            payload.text,
+            with_schedule=payload.with_schedule,
+        )
     except Exception as exc:  # noqa: BLE001
         import logging
 
         logging.getLogger("synapse.subjects").warning("import preview failed: %s", exc)
-        items = ai.heuristic_subjects_from_text(payload.text)
+        if payload.with_schedule:
+            items = ai.heuristic_subjects_with_schedule_from_text(payload.text)
+        else:
+            items = ai.heuristic_subjects_from_text(payload.text)
         engine = "heuristic"
     preview = [
         SubjectImportItem(
@@ -76,6 +82,16 @@ async def preview_subject_import(
             description=item.get("description"),
             color=_next_color(i),
             selected=True,
+            schedule=[
+                ScheduleSlotCreate(
+                    weekday=int(s["weekday"]),
+                    start_time=str(s["start_time"]),
+                    end_time=str(s["end_time"]),
+                    location=s.get("location"),
+                )
+                for s in item.get("schedule", [])
+                if isinstance(s, dict)
+            ],
         )
         for i, item in enumerate(items)
     ]
@@ -88,7 +104,7 @@ def confirm_subject_import(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[SubjectOut]:
-    """Bulk-create selected subjects without schedule slots."""
+    """Bulk-create selected subjects; optional weekly schedule slots per item."""
     created_ids: list[int] = []
     color_i = 0
     for item in payload.items:
@@ -107,6 +123,16 @@ def confirm_subject_import(
         color_i += 1
         db.add(subject)
         db.flush()
+        for slot in item.schedule:
+            db.add(
+                ScheduleSlot(
+                    subject_id=subject.id,
+                    weekday=slot.weekday,
+                    start_time=slot.start_time,
+                    end_time=slot.end_time,
+                    location=slot.location,
+                )
+            )
         created_ids.append(subject.id)
     if not created_ids:
         raise HTTPException(status_code=400, detail="Не выбрано ни одного предмета")

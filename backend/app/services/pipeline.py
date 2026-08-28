@@ -264,9 +264,23 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
             message="Загружаем модель распознавания речи…",
         )
 
+        from app.services.media import is_video_path, prepare_transcription_path
+
+        audio_path = Path(lecture.audio_path)
+        transcode_path: Path | None = None
+        if is_video_path(audio_path):
+            update_lecture_progress(
+                db,
+                lecture,
+                stage=ProcessingStage.transcribing,
+                progress=10,
+                message="Извлекаем звук из видео…",
+            )
+
         try:
+            transcribe_path, transcode_path = prepare_transcription_path(audio_path)
             result = await ai.transcribe_audio(
-                Path(lecture.audio_path),
+                transcribe_path,
                 lecture.audio_filename or "audio.mp3",
                 on_progress=_progress_reporter(lecture_id),
             )
@@ -274,7 +288,10 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
             lecture.transcript = transcript
             if result.duration_seconds:
                 lecture.duration_seconds = result.duration_seconds
-            notices.append("Аудио расшифровано.")
+            if is_video_path(audio_path):
+                notices.append("Звук из видео расшифрован.")
+            else:
+                notices.append("Аудио расшифровано.")
             update_lecture_progress(
                 db,
                 lecture,
@@ -285,7 +302,7 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
         except ai.TranscriptionUnavailable as exc:
             logger.warning("transcription unavailable for lecture %s: %s", lecture_id, exc)
             notices.append(
-                "Расшифровать аудио не удалось. Загрузите слайды/PDF — конспект соберётся по ним."
+                "Расшифровать запись не удалось. Загрузите слайды/PDF — конспект соберётся по ним."
             )
             update_lecture_progress(
                 db,
@@ -294,6 +311,9 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
                 progress=50,
                 message="Расшифровка недоступна — пробуем собрать конспект по материалам",
             )
+        finally:
+            if transcode_path and transcode_path.exists():
+                transcode_path.unlink(missing_ok=True)
 
         if not transcript and not materials_text.strip():
             lecture.status = LectureStatus.needs_clarification

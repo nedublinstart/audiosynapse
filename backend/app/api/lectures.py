@@ -51,6 +51,9 @@ ALLOWED_AUDIO = {
     ".3gp",
     ".aiff",
     ".mkv",
+    ".mov",
+    ".avi",
+    ".m4v",
 }
 ALLOWED_MATERIALS = {
     ".pdf",

@@ -91,6 +91,7 @@ export type SubjectImportItem = {
   description: string | null;
   color: string | null;
   selected: boolean;
+  schedule?: Omit<ScheduleSlot, "id">[];
 };
 
 export type CalendarLecture = {
@@ -253,12 +254,12 @@ export const api = {
     semester_id?: number | null;
     schedule?: Omit<ScheduleSlot, "id">[];
   }) => request<Subject>("/api/subjects", { method: "POST", body: JSON.stringify(body) }),
-  previewSubjectImport: (text: string) =>
+  previewSubjectImport: (text: string, withSchedule = false) =>
     request<{ engine: string; items: SubjectImportItem[] }>(
       "/api/subjects/import/preview",
       {
         method: "POST",
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, with_schedule: withSchedule }),
       },
       false,
       120_000,
