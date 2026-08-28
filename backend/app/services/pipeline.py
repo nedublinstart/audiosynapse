@@ -164,11 +164,27 @@ def finalize_pipeline_with_fallback(
                 reason[:120],
             )
         else:
-            lecture.status = LectureStatus.needs_clarification
-            lecture.enrichment_notice = reason
-            lecture.processing_stage = None
-            lecture.processing_progress = 0
-            lecture.processing_message = "Обработка прервана"
+            if lecture.audio_path and Path(lecture.audio_path).exists():
+                notes = ai.build_demo_notes(
+                    subject_name=lecture.subject.name if lecture.subject else "Предмет",
+                    title=lecture.topic or lecture.title,
+                    lecture_date=_lecture_date_str(lecture),
+                    duration_seconds=lecture.duration_seconds,
+                    transcript=transcript,
+                    materials_text=materials_text,
+                )
+                lecture.notes_markdown = notes
+                lecture.status = LectureStatus.ready
+                lecture.enrichment_notice = reason
+                lecture.processing_stage = ProcessingStage.done.value
+                lecture.processing_progress = 100
+                lecture.processing_message = "Черновик конспекта готов"
+            else:
+                lecture.status = LectureStatus.needs_clarification
+                lecture.enrichment_notice = reason
+                lecture.processing_stage = None
+                lecture.processing_progress = 0
+                lecture.processing_message = "Обработка прервана"
         db.commit()
     except Exception:  # noqa: BLE001
         logger.exception("finalize_pipeline_with_fallback failed lecture=%s", lecture_id)
@@ -264,38 +280,72 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
             message="Загружаем модель распознавания речи…",
         )
 
-        try:
-            result = await ai.transcribe_audio(
-                Path(lecture.audio_path),
-                lecture.audio_filename or "audio.mp3",
-                on_progress=_progress_reporter(lecture_id),
-            )
-            transcript = result.text
-            lecture.transcript = transcript
-            if result.duration_seconds:
-                lecture.duration_seconds = result.duration_seconds
-            notices.append("Аудио расшифровано.")
-            update_lecture_progress(
-                db,
-                lecture,
-                stage=ProcessingStage.transcribing,
-                progress=50,
-                message=f"Расшифровка завершена ({len(transcript):,} симв.)".replace(",", " "),
-            )
-        except ai.TranscriptionUnavailable as exc:
-            logger.warning("transcription unavailable for lecture %s: %s", lecture_id, exc)
-            notices.append(
-                "Расшифровать аудио не удалось. Загрузите слайды/PDF — конспект соберётся по ним."
-            )
-            update_lecture_progress(
-                db,
-                lecture,
-                stage=ProcessingStage.analyzing,
-                progress=50,
-                message="Расшифровка недоступна — пробуем собрать конспект по материалам",
-            )
+        if not lecture.audio_path:
+            notices.append("Аудиофайл не загружен.")
+        elif not Path(lecture.audio_path).exists():
+            notices.append("Аудиофайл не найден на сервере — загрузите запись заново.")
+
+        audio_path = Path(lecture.audio_path) if lecture.audio_path else None
+
+        if audio_path and audio_path.exists():
+            try:
+                result = await ai.transcribe_audio(
+                    audio_path,
+                    lecture.audio_filename or "audio.mp3",
+                    on_progress=_progress_reporter(lecture_id),
+                )
+                transcript = result.text
+                lecture.transcript = transcript
+                if result.duration_seconds:
+                    lecture.duration_seconds = result.duration_seconds
+                notices.append("Аудио расшифровано.")
+                update_lecture_progress(
+                    db,
+                    lecture,
+                    stage=ProcessingStage.transcribing,
+                    progress=50,
+                    message=f"Расшифровка завершена ({len(transcript):,} симв.)".replace(",", " "),
+                )
+            except ai.TranscriptionUnavailable as exc:
+                logger.warning("transcription unavailable for lecture %s: %s", lecture_id, exc)
+                notices.append(
+                    "Расшифровать запись не удалось. Загрузите слайды/PDF — конспект соберётся по ним."
+                )
+                update_lecture_progress(
+                    db,
+                    lecture,
+                    stage=ProcessingStage.analyzing,
+                    progress=50,
+                    message="Расшифровка недоступна — пробуем собрать конспект по материалам",
+                )
 
         if not transcript and not materials_text.strip():
+            if lecture.audio_path and Path(lecture.audio_path).exists():
+                notes = ai.build_demo_notes(
+                    subject_name=lecture.subject.name if lecture.subject else "Предмет",
+                    title=lecture.topic or lecture.title,
+                    lecture_date=_lecture_date_str(lecture),
+                    duration_seconds=lecture.duration_seconds,
+                    transcript="",
+                    materials_text="",
+                )
+                lecture.notes_markdown = notes
+                lecture.status = LectureStatus.ready
+                lecture.enrichment_notice = (
+                    " ".join(notices)
+                    or "Расшифровка не удалась — сохранён черновик. "
+                    "Загрузите PDF/DOCX или нажмите «Обработать снова»."
+                )
+                lecture.processing_stage = ProcessingStage.done.value
+                lecture.processing_progress = 100
+                lecture.processing_message = "Черновик конспекта готов"
+                db.commit()
+                logger.warning(
+                    "pipeline no transcript lecture=%s — delivered stub notes",
+                    lecture_id,
+                )
+                return
+
             lecture.status = LectureStatus.needs_clarification
             lecture.enrichment_notice = " ".join(notices) or "Нет аудио-текста и материалов для конспекта."
             lecture.processing_stage = None

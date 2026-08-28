@@ -176,10 +176,10 @@ def _g4f_call(provider_name: str, model: str, messages: list[dict], temperature:
     return (response.choices[0].message.content or "").strip()
 
 
-def _with_timeout(fn, *args, timeout: float | None = None):
+def _with_timeout(fn, *args, timeout: float | None = None, **kwargs):
     timeout = timeout or settings.ai_timeout_seconds
     with ThreadPoolExecutor(max_workers=1) as pool:
-        fut = pool.submit(fn, *args)
+        fut = pool.submit(fn, *args, **kwargs)
         try:
             return fut.result(timeout=timeout)
         except FuturesTimeout as exc:

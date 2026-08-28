@@ -461,6 +461,7 @@ function LectureInner() {
               <StatePlaceholder
                 inline
                 variant="clarification"
+                message={lecture.enrichment_notice ?? undefined}
                 actions={
                   lecture.audio_filename
                     ? [
