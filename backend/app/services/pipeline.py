@@ -403,7 +403,21 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
             message="Проверяем и сохраняем результат…",
         )
 
-        lecture.notes_markdown = notes
+        lecture.notes_markdown = ai._sanitize_notes_markdown(notes)
+        notes = lecture.notes_markdown or ""
+        if len(notes.strip()) < 350 and (transcript.strip() or materials_text.strip()):
+            logger.warning("pipeline notes too short after sanitize lecture=%s", lecture_id)
+            notes = ai.build_demo_notes(
+                subject_name=lecture.subject.name if lecture.subject else "Предмет",
+                title=lecture.topic or lecture.title,
+                lecture_date=_lecture_date_str(lecture),
+                duration_seconds=lecture.duration_seconds,
+                transcript=transcript,
+                materials_text=materials_text,
+            )
+            notes = ai._sanitize_notes_markdown(notes)
+            engine = "local"
+            lecture.notes_markdown = notes
         if engine == "local":
             notices.append(
                 "Конспект собран по транскрипту в упрощённом режиме — "

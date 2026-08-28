@@ -62,6 +62,7 @@ function LectureInner() {
   const prevStatusRef = useRef<string | null>(null);
   const [processingStuck, setProcessingStuck] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
+  const [showRawNotes, setShowRawNotes] = useState(false);
   const [loadFailed, setLoadFailed] = useState<unknown>(null);
   const [chatLoadFailed, setChatLoadFailed] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -557,6 +558,24 @@ function LectureInner() {
                   </div>
                 ) : null}
                 <MarkdownNotes content={lecture.notes_markdown} />
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    className="text-xs underline-offset-2 hover:underline"
+                    style={{ color: "var(--fg-muted)" }}
+                    onClick={() => setShowRawNotes((v) => !v)}
+                  >
+                    {showRawNotes ? "Скрыть текст конспекта" : "Конспект отображается криво? Показать полный текст"}
+                  </button>
+                  {showRawNotes ? (
+                    <pre
+                      className="mt-2 max-h-[32rem] overflow-y-auto whitespace-pre-wrap rounded-[10px] p-3 text-sm leading-relaxed"
+                      style={{ background: "var(--bg-soft)", color: "var(--fg)" }}
+                    >
+                      {lecture.notes_markdown}
+                    </pre>
+                  ) : null}
+                </div>
               </>
             ) : (
               <div className="space-y-6">

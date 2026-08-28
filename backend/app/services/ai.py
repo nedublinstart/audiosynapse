@@ -179,18 +179,24 @@ def _slice_source_for_section(source_text: str, idx: int, total: int, window: in
 
 
 def _notes_look_too_short(notes: str, source_len: int) -> bool:
+    stripped = notes.strip()
+    if len(stripped) < 350:
+        return True
     if source_len < 300:
-        return len(notes.strip()) < 400
-    # Expect notes to be substantial relative to source (enrich, don't shrink).
-    target = max(2800, int(source_len * 0.35))
-    return len(notes.strip()) < target
+        return len(stripped) < max(400, source_len + 120)
+    target = max(900, int(source_len * 0.35))
+    return len(stripped) < target
 
 
 def _sanitize_notes_markdown(notes: str) -> str:
-    """Escape currency-like $ so markdown math renderers do not swallow the rest."""
-    # $100 / $1,500 — not LaTeX
-    notes = re.sub(r"\$(\d)", r"\\$\1", notes)
-    return notes
+    """Strip LaTeX $ delimiters — they break markdown renderers on finance/chemistry notes."""
+    text = (notes or "").strip()
+    if not text:
+        return text
+    text = re.sub(r"\$\$([\s\S]*?)\$\$", r"\1", text)
+    text = re.sub(r"\$([^$\n]+)\$", r"\1", text)
+    text = text.replace("$", "")
+    return text
 
 
 async def _ensure_notes_quality(
