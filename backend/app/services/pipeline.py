@@ -373,6 +373,15 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
             message="Собираем полный конспект без урезания содержания…",
         )
 
+        def _notes_progress(progress: int, message: str) -> None:
+            update_lecture_progress(
+                db,
+                lecture,
+                stage=ProcessingStage.generating_notes,
+                progress=max(60, min(90, progress)),
+                message=message,
+            )
+
         notes, engine = await ai.generate_notes(
             subject_name=lecture.subject.name,
             title=lecture.topic or lecture.title,
@@ -383,6 +392,7 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
             subject_description=str(ctx["subject_description"]),
             course_context=str(ctx["course_context"]),
             lecture_number=int(ctx["lecture_number"]),
+            on_progress=_notes_progress,
         )
 
         update_lecture_progress(
@@ -395,7 +405,9 @@ async def _run_lecture_pipeline_impl(lecture_id: int) -> None:
 
         lecture.notes_markdown = notes
         if engine == "local":
-            notices.append("Конспект собран локально — для полного качества подключите ИИ-ключ.")
+            notices.append(
+                "Конспект собран быстро по транскрипту — нажмите «Обработать снова» для полной AI-версии."
+            )
         elif engine == "ai":
             notices.append("Конспект собран с полным разбором материала.")
 

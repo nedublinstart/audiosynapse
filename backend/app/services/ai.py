@@ -284,6 +284,7 @@ async def _generate_notes_sectioned(
             "Примеры и приложения",
             "Итоги и выводы",
         ]
+    topics = topics[: max(2, settings.notes_max_sections)]
 
     sections: list[str] = []
     total = len(topics)
@@ -307,35 +308,29 @@ async def _generate_notes_sectioned(
         )
         sections.append(section.strip())
 
-    assembly_prompt = f"""{context_prefix}Собери финальный ПОЛНЫЙ конспект из готовых разделов.
-
-Предмет: {subject_name}
-Тема: {title}
-Дата: {lecture_date}
-Длительность: {_format_duration(duration_seconds)}
-
-Требования:
-- Сохрани ВСЕ разделы ниже целиком (не сокращай).
-- Добавь шапку, краткое резюме, связь с практикой, что доработать, 6–8 вопросов.
-- Без мета-текста про методики и алгоритмы — только содержание лекции.
-- Английские термины сохрани.
-- Если есть предыдущие лекции курса — одной строкой укажи, как эта связана с ними.
-
-=== РАЗДЕЛЫ ===
-{chr(10).join(sections)}
-"""
-    return await _chat(
-        SYNAPSE_CORE_SYSTEM_PROMPT,
-        assembly_prompt,
-        temperature=0.2,
-        timeout=settings.ai_notes_timeout_seconds,
+    # Fast assembly without an extra LLM round-trip.
+    header = (
+        f"# Лекция: {title}\n\n"
+        f"**Предмет:** {subject_name} | **Дата:** {lecture_date} | "
+        f"**Длительность:** {_format_duration(duration_seconds)}\n\n"
+        f"## Краткое резюме\n"
+        f"*Конспект собран по разделам лекции.*\n\n---\n\n"
+        f"## Основные блоки\n\n"
     )
+    body = "\n\n".join(sections)
+    footer = (
+        "\n\n---\n\n## Вопросы для самопроверки\n"
+        "1. Назовите ключевые термины лекции.\n"
+        "2. Объясните главную идею своими словами.\n"
+        "3. Приведите пример из материала.\n"
+    )
+    return header + body + footer
 
 
 async def _prepare_transcript_for_notes(transcript: str) -> tuple[str, str]:
     """
     Return (source_text_for_prompt, processing_note).
-    Long lectures: chunk-wise extraction that preserves detail, not blind truncation.
+    Fast path: truncate very long transcripts instead of slow per-chunk AI digest.
     """
     transcript = (transcript or "").strip()
     if not transcript:
@@ -344,21 +339,12 @@ async def _prepare_transcript_for_notes(transcript: str) -> tuple[str, str]:
     if len(transcript) <= settings.notes_single_pass_max_chars:
         return transcript, ""
 
-    chunks = _split_transcript(transcript, settings.notes_chunk_size)
-    logger.info("notes pipeline: digesting %s transcript chunks", len(chunks))
-    digests: list[str] = []
-    for idx, chunk in enumerate(chunks, start=1):
-        digest = await _chat(
-            CHUNK_DIGEST_PROMPT,
-            f"Фрагмент {idx} из {len(chunks)} (лекция, без пропусков):\n\n{chunk}",
-            temperature=0.12,
-            timeout=settings.ai_notes_timeout_seconds,
-        )
-        digests.append(f"## Фрагмент {idx}/{len(chunks)}\n{digest.strip()}")
-
-    merged = "\n\n".join(digests)
-    note = f"Лекция длинная ({len(transcript)} симв.) — обработана по частям ({len(chunks)} фрагм.), без урезания содержания."
-    return merged, note
+    cap = settings.notes_single_pass_max_chars
+    trimmed = transcript[:cap]
+    note = (
+        f"Длинная лекция ({len(transcript):,} симв.) — в конспект вошла основная часть транскрипта."
+    ).replace(",", " ")
+    return trimmed, note
 
 
 def ai_status() -> dict:
@@ -568,8 +554,18 @@ async def generate_notes(
     subject_description: str = "",
     course_context: str = "",
     lecture_number: int | None = None,
+    on_progress=None,
 ) -> tuple[str, str]:
-    """Return (markdown_notes, engine_label). Never blindly truncates source material."""
+    """Return (markdown_notes, engine_label). Fast single-pass by default."""
+    import asyncio
+
+    def report(progress: int, message: str) -> None:
+        if on_progress:
+            try:
+                on_progress(progress, message)
+            except Exception:  # noqa: BLE001
+                pass
+
     source_text, chunk_note = await _prepare_transcript_for_notes(transcript)
     materials_block = (materials_text or "").strip() or "(нет)"
     context = _context_block(
@@ -579,19 +575,18 @@ async def generate_notes(
     )
     context_block = f"\n=== КОНТЕКСТ КУРСА ===\n{context}\n" if context else ""
 
-    user_prompt = f"""Составь МАКСИМАЛЬНО ПОЛНЫЙ учебный конспект по шаблону.
-Структурируй и углуби материал — не урезай. Каждая важная тема — отдельный подраздел.
-Без воды про алгоритмы и методики — только содержание лекции.
+    user_prompt = f"""Составь полный учебный конспект по шаблону из системного промпта.
+Структурируй материал — не урезай ключевое содержание.
 
 Предмет: {subject_name}
 Тема лекции: {title}
 Дата: {lecture_date}
 Длительность: {_format_duration(duration_seconds)}
 {context_block}
-=== ТРАНСКРИПТ АУДИО (полностью) ===
+=== ТРАНСКРИПТ АУДИО ===
 {source_text or "(транскрипт недоступен — опирайся на дополнительные материалы)"}
 
-=== ДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ (полностью) ===
+=== ДОПОЛНИТЕЛЬНЫЕ МАТЕРИАЛЫ ===
 {materials_block}
 """
     if chunk_note:
@@ -599,9 +594,10 @@ async def generate_notes(
 
     source_len = _source_length(transcript, materials_text)
 
-    try:
-        # Long lectures: multi-pass pipeline gives richer notes than one-shot free models.
-        if source_len > 1500:
+    async def _run() -> tuple[str, str]:
+        report(62, "Готовим конспект (один проход)…")
+        if source_len >= settings.notes_sectioned_min_chars:
+            report(65, f"Длинная лекция — до {settings.notes_max_sections} разделов…")
             notes = await _generate_notes_sectioned(
                 subject_name=subject_name,
                 title=title,
@@ -613,46 +609,36 @@ async def generate_notes(
                 course_context=course_context,
                 lecture_number=lecture_number,
             )
-        else:
-            notes = await _chat(
-                SYNAPSE_CORE_SYSTEM_PROMPT,
-                user_prompt,
-                temperature=0.22,
-                timeout=settings.ai_notes_timeout_seconds,
-            )
-            notes = await _expand_notes_if_needed(
-                notes,
-                transcript=transcript,
-                materials_text=materials_text,
-                subject_name=subject_name,
-                title=title,
-            )
-            if _notes_look_too_short(notes, source_len):
-                notes = await _generate_notes_sectioned(
-                    subject_name=subject_name,
-                    title=title,
-                    lecture_date=lecture_date,
-                    duration_seconds=duration_seconds,
-                    source_text=source_text or materials_block,
-                    materials_text=materials_text,
-                    subject_description=subject_description,
-                    course_context=course_context,
-                    lecture_number=lecture_number,
-                )
+            return notes, "ai"
+
+        report(68, "Собираем конспект…")
+        notes = await _chat(
+            SYNAPSE_CORE_SYSTEM_PROMPT,
+            user_prompt,
+            temperature=0.22,
+            timeout=settings.ai_notes_timeout_seconds,
+        )
         return notes, "ai"
+
+    try:
+        return await asyncio.wait_for(_run(), timeout=settings.notes_pipeline_max_seconds)
+    except asyncio.TimeoutError:
+        logger.warning("generate_notes timed out after %ss", settings.notes_pipeline_max_seconds)
     except Exception as exc:  # noqa: BLE001
         logger.error("generate_notes failed: %s", exc)
-        return (
-            build_demo_notes(
-                subject_name=subject_name,
-                title=title,
-                lecture_date=lecture_date,
-                duration_seconds=duration_seconds,
-                transcript=transcript,
-                materials_text=materials_text,
-            ),
-            "local",
-        )
+
+    report(88, "Быстрый конспект по транскрипту…")
+    return (
+        build_demo_notes(
+            subject_name=subject_name,
+            title=title,
+            lecture_date=lecture_date,
+            duration_seconds=duration_seconds,
+            transcript=transcript,
+            materials_text=materials_text,
+        ),
+        "local",
+    )
 
 
 async def enrich_notes(

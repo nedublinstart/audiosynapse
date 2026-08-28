@@ -135,7 +135,7 @@ function LectureInner() {
     }
     const tick = () => {
       const elapsed = Date.now() - (processingSinceRef.current ?? Date.now());
-      if (elapsed > 30 * 60 * 1000) {
+      if (elapsed > 8 * 60 * 1000) {
         setProcessingStuck(true);
       }
       void load();
