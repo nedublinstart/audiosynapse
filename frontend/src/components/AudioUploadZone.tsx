@@ -2,8 +2,9 @@
 
 import { useCallback, useRef, useState } from "react";
 import { FileAudio, Loader2, Upload, X } from "lucide-react";
+import { AUDIO_ACCEPT, AUDIO_HINT } from "@/lib/fileFormats";
 
-const ACCEPT = ".mp3,.wav,.m4a,.ogg,.opus,.aac,.flac,.wma,.amr,.mp4,.webm,audio/*";
+const ACCEPT = AUDIO_ACCEPT;
 const MAX_MB = 500;
 
 function formatSize(bytes: number) {
@@ -78,7 +79,9 @@ export function AudioUploadZone({
       <div
         role="button"
         tabIndex={0}
-        className="upload-zone relative rounded-[14px] border-2 border-dashed px-4 py-8 text-center transition-all duration-300 sm:py-10"
+        className={`upload-zone relative rounded-[14px] border-2 border-dashed px-4 py-8 text-center transition-all duration-300 sm:py-10 ${
+          dragOver ? "upload-zone--drag" : showProgress ? "upload-zone--busy" : "upload-zone--idle"
+        }`}
         style={{
           borderColor: dragOver ? "var(--accent)" : "var(--border)",
           background: dragOver
@@ -158,7 +161,7 @@ export function AudioUploadZone({
         ) : (
           <>
             <div
-              className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-[14px]"
+              className="upload-zone-icon mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-[14px]"
               style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
             >
               {currentFilename ? <FileAudio size={22} /> : <Upload size={22} />}
@@ -167,7 +170,7 @@ export function AudioUploadZone({
               {currentFilename ? "Перетащите новый файл или нажмите" : "Перетащите аудио лекции сюда"}
             </p>
             <p className="mt-1 text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-              mp3, wav, m4a, ogg, opus, aac, flac · до {MAX_MB} МБ
+              {AUDIO_HINT}
             </p>
             {currentFilename ? (
               <p className="mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs" style={{ background: "var(--bg-soft)", color: "var(--fg-muted)" }}>

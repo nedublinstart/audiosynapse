@@ -311,6 +311,94 @@ html.dark body::after {
   animation: toast-in 0.22s var(--ease-expo) both;
 }
 
+@keyframes panel-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes upload-idle {
+  0%,
+  100% {
+    border-color: var(--border);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  }
+}
+
+@keyframes upload-icon-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.panel-reveal {
+  animation: panel-reveal 0.34s var(--ease-expo) both;
+}
+
+.upload-zone--idle:not(:disabled) {
+  animation: upload-idle 5s ease-in-out infinite;
+}
+
+.upload-zone--drag {
+  animation: none;
+}
+
+.upload-zone--idle .upload-zone-icon {
+  animation: upload-icon-float 4s ease-in-out infinite;
+}
+
+.upload-zone--busy {
+  animation: none;
+}
+
+.input-suggested {
+  color: color-mix(in srgb, var(--fg) 72%, var(--fg-muted));
+}
+
+.input-suggested:focus {
+  color: var(--fg);
+}
+
+.color-swatch {
+  transition:
+    transform 0.18s var(--ease-expo),
+    box-shadow 0.18s var(--ease-expo);
+}
+
+.color-swatch:hover {
+  transform: scale(1.06);
+}
+
+.color-swatch:active {
+  transform: scale(0.96);
+}
+
+.subject-add-card {
+  transition:
+    border-color 0.22s var(--ease-expo),
+    background 0.22s var(--ease-expo),
+    transform 0.16s var(--ease-expo);
+}
+
+.subject-add-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+.subject-add-card:active {
+  transform: scale(0.992);
+}
+
 .animate-text-in {
   animation: text-reveal 0.32s var(--ease-expo) both;
 }
@@ -365,6 +453,9 @@ html.dark body::after {
   .animate-toast,
   .animate-text-in,
   .animate-chat-in,
+  .panel-reveal,
+  .upload-zone--idle,
+  .upload-zone-icon,
   .stagger > *,
   .ambient-orb,
   .ambient-blob,
@@ -790,11 +881,11 @@ html.dark body::after {
   }
 
   .btn:hover:not(:disabled) {
-    transform: none;
+    transform: translateY(-0.5px);
   }
 
   .btn:active:not(:disabled) {
-    transform: scale(0.97);
+    transform: scale(0.97) translateY(0);
   }
 
   .btn:active:not(:disabled)::after {
@@ -816,7 +907,7 @@ html.dark body::after {
 
   .btn-primary:hover:not(:disabled) {
     background: var(--accent-hover);
-    box-shadow: none;
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 16%, transparent);
   }
 
   .btn-ghost {

@@ -52,7 +52,30 @@ ALLOWED_AUDIO = {
     ".aiff",
     ".mkv",
 }
-ALLOWED_MATERIALS = {".pdf", ".pptx", ".docx", ".png", ".jpg", ".jpeg", ".webp", ".txt", ".md"}
+ALLOWED_MATERIALS = {
+    ".pdf",
+    ".pptx",
+    ".ppt",
+    ".docx",
+    ".odt",
+    ".rtf",
+    ".txt",
+    ".md",
+    ".html",
+    ".htm",
+    ".csv",
+    ".xlsx",
+    ".xls",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".heic",
+}
 
 
 def _get_owned_subject(db: Session, user: User, subject_id: int) -> Subject:
@@ -293,7 +316,7 @@ async def upload_material(
     if suffix not in ALLOWED_MATERIALS:
         raise HTTPException(
             status_code=400,
-            detail="Формат файла не поддерживается. Допустимо: PDF, DOCX, PPTX, изображения, TXT.",
+            detail="Формат файла не поддерживается. Допустимо: PDF, Word, PowerPoint, таблицы, текст, изображения.",
         )
 
     dest_dir = settings.upload_dir / f"lecture_{lecture.id}" / "materials"
@@ -326,10 +349,13 @@ async def upload_material(
             message="Обновляем конспект с новыми материалами…",
         )
         try:
+            all_materials = _materials_text(lecture)
             notes, notice = await ai.enrich_notes(
                 existing_notes=lecture.notes_markdown,
-                materials_text=extracted,
+                materials_text=all_materials,
+                new_materials_text=extracted,
                 subject_name=lecture.subject.name,
+                subject_description=lecture.subject.description or "",
                 title=lecture.topic or lecture.title,
             )
             lecture.notes_markdown = notes
