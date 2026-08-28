@@ -61,10 +61,8 @@ function DashboardInner() {
     try {
       const rows = await api.calendar(month.getFullYear(), month.getMonth() + 1);
       setCalendarLectures(rows);
-    } catch (e) {
+    } catch {
       setCalLoadError(true);
-      setLoadError(e);
-      setError(errorMessage(e, "Не удалось загрузить календарь"));
     } finally {
       setCalLoading(false);
     }
@@ -143,7 +141,7 @@ function DashboardInner() {
         <div className="mb-4">
           <ErrorPanel err={loadError} error={error} onRetry={retryAll} />
         </div>
-      ) : error ? (
+      ) : error && !calLoadError ? (
         <InlineAlert error={error} err={loadError ?? undefined} onRetry={retryAll} networkStub />
       ) : null}
 

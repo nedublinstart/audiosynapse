@@ -280,3 +280,29 @@ def add_schedule_slot(
     db.commit()
     db.refresh(slot)
     return ScheduleSlotOut.model_validate(slot)
+
+
+@router.delete(
+    "/subjects/{subject_id}/schedule/{slot_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def delete_schedule_slot(
+    subject_id: int,
+    slot_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    subject = db.query(Subject).filter(Subject.id == subject_id, Subject.owner_id == user.id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Предмет не найден")
+    slot = (
+        db.query(ScheduleSlot)
+        .filter(ScheduleSlot.id == slot_id, ScheduleSlot.subject_id == subject.id)
+        .first()
+    )
+    if not slot:
+        raise HTTPException(status_code=404, detail="Слот расписания не найден")
+    db.delete(slot)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

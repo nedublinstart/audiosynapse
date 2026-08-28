@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState, type CSSProperties } from "react";
-import { ArrowLeft, CalendarDays, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
 import { FadeIn } from "@/components/FadeIn";
@@ -12,9 +12,10 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ErrorPanel, InlineAlert } from "@/components/InlineAlert";
 import { SkeletonList } from "@/components/SkeletonList";
 import { StatePlaceholder } from "@/components/StatePlaceholder";
+import { ScheduleEditor } from "@/components/ScheduleEditor";
 import { api, type Lecture, type Subject } from "@/lib/api";
 import { errorMessage, placeholderForError } from "@/lib/placeholders";
-import { formatScheduleSlot } from "@/lib/schedule";
+import { emptySlot, formatScheduleSlot, slotToDraft, type ScheduleSlotDraft } from "@/lib/schedule";
 import { isAutoLectureTitle, suggestLectureTitle } from "@/lib/lectureTitles";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -35,6 +36,8 @@ function SubjectInner() {
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState<unknown>(null);
   const [loaded, setLoaded] = useState(false);
+  const [editSchedule, setEditSchedule] = useState(false);
+  const [scheduleDraft, setScheduleDraft] = useState<ScheduleSlotDraft[]>([]);
 
   const load = useCallback(async () => {
     if (invalidId) {
@@ -113,6 +116,37 @@ function SubjectInner() {
     }
   }
 
+  function openScheduleEditor() {
+    const slots = subject?.schedule_slots?.length
+      ? subject.schedule_slots.map(slotToDraft)
+      : [emptySlot()];
+    setScheduleDraft(slots);
+    setEditSchedule(true);
+  }
+
+  async function onSaveSchedule() {
+    if (!subject) return;
+    setBusy(true);
+    setError("");
+    try {
+      for (const slot of subject.schedule_slots) {
+        await api.deleteScheduleSlot(subjectId, slot.id);
+      }
+      for (const draft of scheduleDraft) {
+        if (!draft.start_time || !draft.end_time) continue;
+        await api.addScheduleSlot(subjectId, draft);
+      }
+      const updated = await api.getSubject(subjectId);
+      setSubject(updated);
+      setEditSchedule(false);
+    } catch (err) {
+      setLoadError(err);
+      setError(errorMessage(err, "Не удалось сохранить расписание"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!loaded) {
     return (
       <AppShell title="Предмет">
@@ -183,6 +217,17 @@ function SubjectInner() {
                     ))}
                   </ul>
                 ) : null}
+                {!editSchedule ? (
+                  <button
+                    type="button"
+                    className="mt-2 flex items-center gap-1 text-xs"
+                    style={{ color: "var(--accent)" }}
+                    onClick={openScheduleEditor}
+                  >
+                    <Pencil size={12} />
+                    {subject?.schedule_slots?.length ? "Изменить расписание" : "Добавить расписание"}
+                  </button>
+                ) : null}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -199,6 +244,32 @@ function SubjectInner() {
           </div>
         </div>
       </FadeIn>
+
+      {editSchedule ? (
+        <FadeIn>
+          <div className="panel mb-6 p-4 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-medium">Расписание на семестр</h3>
+              <button
+                type="button"
+                className="btn-ghost !min-h-9 !px-2 text-xs"
+                onClick={() => setEditSchedule(false)}
+              >
+                Отмена
+              </button>
+            </div>
+            <ScheduleEditor compact slots={scheduleDraft} onChange={setScheduleDraft} />
+            <button
+              type="button"
+              className="btn-primary mt-4 sm:!w-auto"
+              disabled={busy}
+              onClick={() => void onSaveSchedule()}
+            >
+              {busy ? "Сохраняем…" : "Сохранить расписание"}
+            </button>
+          </div>
+        </FadeIn>
+      ) : null}
 
       {showForm ? (
         <FadeIn>

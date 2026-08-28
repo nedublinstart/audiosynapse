@@ -296,8 +296,8 @@ async def upload_audio(
         db,
         lecture,
         stage=ProcessingStage.queued,
-        progress=100,
-        message=f"Загружено {_human_size(written)} — ставим в очередь…",
+        progress=15,
+        message=f"Загружено {_human_size(written)} — запускаем обработку…",
     )
 
     background_tasks.add_task(_process_lecture_pipeline, lecture.id)
@@ -308,6 +308,7 @@ async def upload_audio(
 @router.post("/lectures/{lecture_id}/materials", response_model=LectureOut)
 async def upload_material(
     lecture_id: int,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -323,8 +324,10 @@ async def upload_material(
     dest_dir = settings.upload_dir / f"lecture_{lecture.id}" / "materials"
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / f"{uuid.uuid4().hex}{suffix}"
-    content = await file.read()
-    dest.write_bytes(content)
+    try:
+        await _save_upload_stream(file, dest, max_bytes=settings.max_upload_bytes)
+    except HTTPException:
+        raise
 
     extracted = extract_text_from_file(dest, file.content_type or "application/octet-stream", file.filename or dest.name)
     material = Material(
@@ -376,6 +379,18 @@ async def upload_material(
             lecture.processing_progress = 100
             lecture.processing_message = "Конспект без изменений"
         db.commit()
+    elif extracted.strip() or _materials_text(lecture).strip():
+        # First materials without notes — generate full конспект from PDF/slides
+        lecture.status = LectureStatus.processing
+        update_lecture_progress(
+            db,
+            lecture,
+            stage=ProcessingStage.generating_notes,
+            progress=15,
+            message="Материал принят — собираем конспект…",
+        )
+        db.commit()
+        background_tasks.add_task(_process_lecture_pipeline, lecture.id)
 
     lecture = _get_owned_lecture(db, user, lecture_id)
     return _lecture_out(lecture)
@@ -389,8 +404,13 @@ async def reprocess_lecture(
     user: User = Depends(get_current_user),
 ) -> LectureOut:
     lecture = _get_owned_lecture(db, user, lecture_id)
-    if not lecture.audio_path:
-        raise HTTPException(status_code=400, detail="Сначала загрузите аудио лекции")
+    has_audio = bool(lecture.audio_path and Path(lecture.audio_path).exists())
+    has_materials = bool(_materials_text(lecture).strip())
+    if not has_audio and not has_materials:
+        raise HTTPException(
+            status_code=400,
+            detail="Сначала загрузите аудио или материалы (PDF, слайды)",
+        )
     lecture.status = LectureStatus.processing
     lecture.transcript = None
     lecture.notes_markdown = None

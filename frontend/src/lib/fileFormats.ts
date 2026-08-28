@@ -8,6 +8,8 @@ export const MATERIAL_ACCEPT =
   ".png,.jpg,.jpeg,.webp,.gif,.bmp,.tif,.tiff,.heic,image/*";
 
 export const MATERIAL_HINT =
-  "PDF, Word, PowerPoint, таблицы, текст, изображения слайдов";
+  "PDF, Word, PowerPoint, таблицы, текст, изображения · до 500 МБ";
+
+export const MAX_UPLOAD_MB = 500;
 
 export const AUDIO_HINT = "mp3, wav, m4a, ogg, opus, aac, flac и другие · до 500 МБ";

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   Printer,
   RefreshCw,
   Send,
+  Trash2,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -32,7 +33,7 @@ import { SkeletonLecturePage } from "@/components/SkeletonList";
 import { StatePlaceholder } from "@/components/StatePlaceholder";
 import { TextReveal } from "@/components/TextReveal";
 import { api, isNetworkError, type ChatMessage, type Lecture } from "@/lib/api";
-import { MATERIAL_ACCEPT, MATERIAL_HINT } from "@/lib/fileFormats";
+import { MATERIAL_ACCEPT, MATERIAL_HINT, MAX_UPLOAD_MB } from "@/lib/fileFormats";
 import { chatSendErrorMessage, placeholderForError } from "@/lib/placeholders";
 import {
   canSendChatMessage,
@@ -42,6 +43,7 @@ import {
 
 function LectureInner() {
   const params = useParams();
+  const router = useRouter();
   const lectureId = Number(params.id);
   const invalidId = !Number.isFinite(lectureId) || lectureId <= 0;
   const [lecture, setLecture] = useState<Lecture | null>(null);
@@ -59,6 +61,7 @@ function LectureInner() {
   const processingSinceRef = useRef<number | null>(null);
   const prevStatusRef = useRef<string | null>(null);
   const [processingStuck, setProcessingStuck] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
   const [loadFailed, setLoadFailed] = useState<unknown>(null);
   const [chatLoadFailed, setChatLoadFailed] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -135,7 +138,7 @@ function LectureInner() {
     }
     const tick = () => {
       const elapsed = Date.now() - (processingSinceRef.current ?? Date.now());
-      if (elapsed > 8 * 60 * 1000) {
+      if (elapsed > 10 * 60 * 1000) {
         setProcessingStuck(true);
       }
       void load();
@@ -162,6 +165,12 @@ function LectureInner() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat, tab, busy]);
 
+  useEffect(() => {
+    if (lecture?.status === "processing" && uploadProgress != null) {
+      setUploadProgress(null);
+    }
+  }, [lecture?.status, uploadProgress]);
+
   async function onAudio(file: File) {
     setBusy(true);
     setError("");
@@ -169,8 +178,10 @@ function LectureInner() {
     setSuccess("");
     setUploadProgress(0);
     try {
-      const updated = await api.uploadAudio(lectureId, file, (pct) => setUploadProgress(pct));
-      setUploadProgress(100);
+      const updated = await api.uploadAudio(lectureId, file, (pct) =>
+        setUploadProgress(Math.min(pct, 95)),
+      );
+      setUploadProgress(96);
       setLecture(updated);
     } catch (err) {
       setUploadProgress(null);
@@ -178,11 +189,16 @@ function LectureInner() {
       setError(err instanceof Error ? err.message : "Ошибка загрузки");
     } finally {
       setBusy(false);
-      window.setTimeout(() => setUploadProgress(null), 600);
     }
   }
 
   async function onMaterial(file: File) {
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      const msg = `Файл слишком большой. Максимум ${MAX_UPLOAD_MB} МБ.`;
+      setError(msg);
+      setLastError(new Error(msg));
+      return;
+    }
     setBusy(true);
     setError("");
     setLastError(null);
@@ -192,13 +208,30 @@ function LectureInner() {
       setLecture(updated);
       setSuccess(
         updated.status === "processing"
-          ? "Материал добавлен — обновляем конспект…"
+          ? updated.notes_markdown
+            ? "Материал добавлен — обновляем конспект…"
+            : "Материал добавлен — собираем конспект…"
           : "Материал добавлен.",
       );
     } catch (err) {
       setLastError(err);
       setError(err instanceof Error ? err.message : "Ошибка загрузки");
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDeleteLecture() {
+    if (!confirm("Удалить лекцию и все материалы?")) return;
+    setBusy(true);
+    setError("");
+    try {
+      const subjectId = lecture?.subject_id;
+      await api.deleteLecture(lectureId);
+      router.push(subjectId ? `/app/subjects/${subjectId}` : "/app");
+    } catch (err) {
+      setLastError(err);
+      setError(err instanceof Error ? err.message : "Не удалось удалить лекцию");
       setBusy(false);
     }
   }
@@ -320,6 +353,14 @@ function LectureInner() {
               <span className="hidden sm:inline">К предмету</span>
             </Link>
             <StatusBadge status={lecture.status} />
+            <button
+              className="btn-ghost !min-h-10 !px-2.5"
+              aria-label="Удалить лекцию"
+              disabled={busy || lecture.status === "processing"}
+              onClick={() => void onDeleteLecture()}
+            >
+              <Trash2 size={16} />
+            </button>
             {lecture.audio_filename ? (
               <span className="max-w-[10rem] truncate text-xs sm:max-w-none" style={{ color: "var(--fg-muted)" }}>
                 <Mic size={12} className="mr-1 inline" />
@@ -358,7 +399,8 @@ function LectureInner() {
               >
                 <FileUp size={16} /> Материалы ({MATERIAL_HINT})
               </button>
-              {lecture.audio_filename && lecture.status !== "processing" ? (
+              {(lecture.audio_filename || lecture.materials.length > 0) &&
+              lecture.status !== "processing" ? (
                 <button
                   className="btn-outline sm:!w-auto"
                   disabled={busy}
@@ -464,7 +506,7 @@ function LectureInner() {
                       compact
                       variant="processing-wait"
                       actions={
-                        lecture.audio_filename
+                        lecture.audio_filename || lecture.materials.length > 0
                           ? [
                               {
                                 label: "Обработать снова",
@@ -484,7 +526,7 @@ function LectureInner() {
                 variant="clarification"
                 message={lecture.enrichment_notice ?? undefined}
                 actions={
-                  lecture.audio_filename
+                  lecture.audio_filename || lecture.materials.length > 0
                     ? [
                         {
                           label: "Обработать снова",
@@ -503,6 +545,28 @@ function LectureInner() {
                 <QuickStartGuide />
               </div>
             )}
+            {lecture.transcript ? (
+              <div className="mt-8 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+                <button
+                  type="button"
+                  className="label mb-2 flex items-center gap-2"
+                  onClick={() => setShowTranscript((v) => !v)}
+                >
+                  Транскрипт
+                  <span className="text-xs font-normal normal-case tracking-normal" style={{ color: "var(--fg-muted)" }}>
+                    {showTranscript ? "скрыть" : "показать"}
+                  </span>
+                </button>
+                {showTranscript ? (
+                  <div
+                    className="max-h-64 overflow-y-auto rounded-[10px] p-3 text-sm leading-relaxed whitespace-pre-wrap"
+                    style={{ background: "var(--bg-soft)", color: "var(--fg-muted)" }}
+                  >
+                    {lecture.transcript}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {lecture.materials.length > 0 ? (
               <div className="mt-8 border-t pt-4" style={{ borderColor: "var(--border)" }}>
                 <div className="label mb-2">Материалы</div>
@@ -537,8 +601,8 @@ function LectureInner() {
               <div className="min-w-0">
                 <div className="text-xs font-medium sm:text-sm">Synapse Tutor</div>
                 <div className="truncate text-xs" style={{ color: "var(--fg-muted)" }}>
-                  {lecture.notes_markdown
-                    ? "Конспект и материалы этой лекции"
+                  {chatReady
+                    ? "Конспект, транскрипт и материалы этой лекции"
                     : "Загрузите аудио или PDF — чат заработает по материалам"}
                 </div>
               </div>
@@ -611,7 +675,7 @@ function LectureInner() {
               {!chat.length && !chatLoadFailed ? (
                 <ChatEmptyState
                   onHint={setMessage}
-                  hasNotes={Boolean(lecture.notes_markdown)}
+                  hasContext={chatReady}
                   examMode={examMode}
                 />
               ) : null}

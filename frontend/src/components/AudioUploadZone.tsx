@@ -2,10 +2,10 @@
 
 import { useCallback, useRef, useState } from "react";
 import { FileAudio, Loader2, Upload, X } from "lucide-react";
-import { AUDIO_ACCEPT, AUDIO_HINT } from "@/lib/fileFormats";
+import { AUDIO_ACCEPT, AUDIO_HINT, MAX_UPLOAD_MB } from "@/lib/fileFormats";
 
 const ACCEPT = AUDIO_ACCEPT;
-const MAX_MB = 500;
+const MAX_MB = MAX_UPLOAD_MB;
 
 function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`;
@@ -71,8 +71,7 @@ export function AudioUploadZone({
     [busy, disabled, onError, onFile],
   );
 
-  const uploading = uploadProgress != null && uploadProgress < 100;
-  const showProgress = uploading || (busy && uploadProgress === 100);
+  const showProgress = uploadProgress != null;
 
   return (
     <div className="space-y-3">
@@ -130,7 +129,7 @@ export function AudioUploadZone({
               style={{ color: "var(--accent)" }}
             />
             <p className="text-sm font-medium" style={{ color: "var(--fg)" }}>
-              {uploadProgress != null && uploadProgress < 100
+              {uploadProgress != null && uploadProgress < 96
                 ? "Загрузка на сервер…"
                 : "Файл принят — запускаем обработку…"}
             </p>
