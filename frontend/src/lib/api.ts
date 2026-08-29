@@ -231,8 +231,28 @@ function uploadForm<T>(
   });
 }
 
+export type AiHealthStatus = {
+  engine: string;
+  custom_api_configured: boolean;
+  custom_api_model: string | null;
+  cached_provider: string | null;
+  timeout_seconds: number;
+  max_attempts: number;
+  candidate_providers: string[];
+  transcription: {
+    api: boolean;
+    api_model: string | null;
+    local_whisper: boolean;
+    local_whisper_model: string;
+    language: string;
+    beam_size: number;
+    prefer_local: boolean;
+  };
+};
+
 export const api = {
-  health: () => request<{ status: string; gemini_configured: boolean }>("/api/health"),
+  health: () =>
+    request<{ status: string; app: string; ai: AiHealthStatus }>("/api/health"),
   register: (body: { email: string; full_name: string; password: string }) =>
     request<{ access_token: string; user: User }>("/api/auth/register", {
       method: "POST",
@@ -273,6 +293,18 @@ export const api = {
   getSubject: (id: number) => request<Subject>(`/api/subjects/${id}`),
   deleteSubject: (id: number) =>
     request<void>(`/api/subjects/${id}`, { method: "DELETE" }),
+  addScheduleSlot: (
+    subjectId: number,
+    body: Omit<ScheduleSlot, "id">,
+  ) =>
+    request<ScheduleSlot>(`/api/subjects/${subjectId}/schedule`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteScheduleSlot: (subjectId: number, slotId: number) =>
+    request<void>(`/api/subjects/${subjectId}/schedule/${slotId}`, {
+      method: "DELETE",
+    }),
   listLectures: (subjectId: number) =>
     request<Lecture[]>(`/api/subjects/${subjectId}/lectures`),
   createLecture: (

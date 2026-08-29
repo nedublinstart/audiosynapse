@@ -14,6 +14,9 @@ export const metadata: Metadata = {
   title: "Synapse — конспекты без шума",
   description:
     "Аудиолекции и материалы превращаются в ясные конспекты. Без лишнего шума.",
+  other: {
+    google: "notranslate",
+  },
   icons: {
     icon: [
       { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
@@ -42,7 +45,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ru" className="dark" suppressHydrationWarning>
       <body
-        className={`${sans.variable} antialiased`}
+        className={`${sans.variable} antialiased notranslate`}
+        translate="no"
         style={{ ["--font-display" as string]: "var(--font-sans)" }}
       >
         <ThemeProvider>

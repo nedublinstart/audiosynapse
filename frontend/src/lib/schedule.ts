@@ -33,6 +33,20 @@ export function emptySlot(): ScheduleSlotDraft {
   return { weekday: 0, start_time: "09:00", end_time: "10:30", location: null };
 }
 
+export function slotToDraft(slot: {
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  location: string | null;
+}): ScheduleSlotDraft {
+  return {
+    weekday: slot.weekday,
+    start_time: slot.start_time.slice(0, 5),
+    end_time: slot.end_time.slice(0, 5),
+    location: slot.location,
+  };
+}
+
 export const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mkv", ".mov", ".3gp", ".avi", ".m4v"];
 
 export function isVideoFilename(name: string): boolean {

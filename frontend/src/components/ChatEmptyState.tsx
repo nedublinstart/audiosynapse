@@ -14,11 +14,11 @@ const HINTS = [
 
 export function ChatEmptyState({
   onHint,
-  hasNotes,
+  hasContext,
   examMode,
 }: {
   onHint: (text: string) => void;
-  hasNotes?: boolean;
+  hasContext?: boolean;
   examMode?: boolean;
 }) {
   return (
@@ -37,12 +37,12 @@ export function ChatEmptyState({
           {examMode ? "Режим экзамена" : "Synapse по этой лекции"}
         </p>
         <p className="mt-1.5 text-xs leading-relaxed" style={{ color: "var(--fg-muted)" }}>
-          {hasNotes
+          {hasContext
             ? "Ответы только по конспекту, транскрипту и материалам — без выдумок."
             : "Сначала загрузите аудио или PDF — тогда чат сможет отвечать по материалам."}
         </p>
       </div>
-      {hasNotes ? (
+      {hasContext ? (
         <div className="flex flex-wrap justify-center gap-2">
           {HINTS.map((hint) => (
             <button

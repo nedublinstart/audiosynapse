@@ -2,12 +2,8 @@
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
 import { Mic, Presentation } from "lucide-react";
 import type { Components } from "react-markdown";
-import { TextReveal } from "@/components/TextReveal";
 
 function decorateSources(text: string): React.ReactNode[] {
   const parts = text.split(/(\[(?:Аудио|Слайд|Конспект)[^\]]*\])/g);
@@ -57,25 +53,14 @@ const components: Components = {
   em: ({ children }) => <em>{walkChildren(children)}</em>,
 };
 
-export function MarkdownNotes({ content, animate = true }: { content: string; animate?: boolean }) {
-  const body = (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={components}
-    >
-      {content}
-    </ReactMarkdown>
-  );
-
-  if (!animate) {
-    return <div className="note-prose">{body}</div>;
-  }
-
+/** Plain GFM — no KaTeX ($100 in finance notes used to swallow the entire document). */
+export function MarkdownNotes({ content }: { content: string; animate?: boolean }) {
   return (
-    <TextReveal contentKey={content.length} className="note-prose">
-      {body}
-    </TextReveal>
+    <div className="note-prose">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 }
 
